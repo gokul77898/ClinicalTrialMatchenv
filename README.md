@@ -15,15 +15,52 @@ license: mit
 
 # 🏥 ClinicalTrialMatchEnv
 
+<div align="center">
+
 **An OpenEnv environment for AI agents to match cancer patients to clinical trials**
 
-> Real-world task that oncology nurses spend hours on manually. Same constraints, same stakes.
+[![HuggingFace Space](https://img.shields.io/badge/🤗%20HuggingFace-Space-yellow)](https://huggingface.co/spaces/OmilosAISolutions/ClinicalTrialMatchEnv)
+[![Tests](https://img.shields.io/badge/tests-118%20passing-brightgreen)]()
+[![Docker](https://img.shields.io/badge/docker-ready-blue)]()
+[![OpenEnv](https://img.shields.io/badge/OpenEnv-compliant-purple)]()
+[![License](https://img.shields.io/badge/license-MIT-green)]()
+
+*Real-world task that oncology nurses spend hours on manually. Same constraints, same stakes.*
+
+**[Live Demo](https://huggingface.co/spaces/OmilosAISolutions/ClinicalTrialMatchEnv)** • **[Documentation](#-quick-start)** • **[API Reference](#-api-reference)** • **[Baseline Results](#-baseline-results)**
+
+</div>
+
+---
 
 ## 🎯 What Is This?
 
-An AI agent receives a patient chart (diagnosis, biomarkers, lab values, treatments) and must select the correct clinical trial from a pool of candidates. Wrong matches are penalized heavily (patient safety). The agent must investigate patient data, check trial eligibility criteria, and make the right decision within 20 steps.
+An AI agent receives a patient chart (diagnosis, biomarkers, lab values, treatments) and must select the correct clinical trial from a pool of candidates. **Wrong matches are penalized heavily** (patient safety). The agent must investigate patient data, check trial eligibility criteria, and make the right decision within 20 steps.
 
-**Live Demo:** [HuggingFace Space](https://huggingface.co/spaces/OmilosAISolutions/ClinicalTrialMatchEnv)
+<table>
+<tr>
+<td>
+
+**📊 Environment Stats**
+- 🎮 **6 Tasks** (Easy → Expert)
+- 🧪 **118 Tests** (All passing)
+- 🏆 **0.56 Baseline** (Llama-3-70B)
+- 🔄 **20 Max Steps** per episode
+- 🎯 **5 Actions** available
+
+</td>
+<td>
+
+**💡 Why This Matters**
+- 💰 **$50B problem** in healthcare
+- ⏱️ **Hours saved** per patient match
+- 🏥 **Every hospital** does this manually
+- 🤖 **AI agents** can assist oncology teams
+- 🌍 **Real-world impact** potential
+
+</td>
+</tr>
+</table>
 
 ## ⚡ Quick Start
 
@@ -54,13 +91,38 @@ python inference.py
 
 ## 🎮 How It Works
 
-1. **Agent calls `/reset`** → Gets patient chart + list of trials
-2. **Agent investigates** → `{"type": "check_criteria", "trial_id": "TRIAL-LUNG-1234"}`
-3. **Environment responds** → Inclusion/exclusion details, biomarker matches, eligibility summary
-4. **Agent selects trial** → `{"type": "select_trial", "trial_id": "TRIAL-LUNG-1234"}`
-5. **Agent resolves** → `{"type": "resolve"}` → Gets final grade (0.0-1.0)
+```mermaid
+graph LR
+    A[Agent] -->|1. POST /reset| B[Environment]
+    B -->|Patient + Trials| A
+    A -->|2. check_criteria| B
+    B -->|Eligibility Details| A
+    A -->|3. select_trial| B
+    B -->|Confirmation| A
+    A -->|4. resolve| B
+    B -->|Grade: 0.0-1.0| A
+```
 
-**Key:** Correct trial = +1.0, Wrong trial = -1.0 (safety penalty), Efficiency bonus if ≤5 steps
+**Example Episode:**
+```python
+# 1. Start episode
+POST /reset {"task_id": "single_match"}
+→ Returns: Patient (64yo, lung cancer) + 3 trials
+
+# 2. Check eligibility
+POST /step {"type": "check_criteria", "trial_id": "TRIAL-LUNG-7944"}
+→ Returns: ✅ Inclusion passed, ❌ No exclusions triggered
+
+# 3. Select trial
+POST /step {"type": "select_trial", "trial_id": "TRIAL-LUNG-7944"}
+→ Returns: Trial selected
+
+# 4. Resolve
+POST /step {"type": "resolve"}
+→ Returns: Grade 1.0 ✅ Correct! (3 steps = efficiency bonus)
+```
+
+**Reward Structure:** Correct = +1.0 | Wrong = -1.0 (safety) | Efficient (≤5 steps) = +0.2 bonus
 
 ## 📊 6 Tasks (Easy → Expert)
 
