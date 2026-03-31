@@ -1,0 +1,188 @@
+action_space:
+  actions:
+  - description: Reveal value of a patient field
+    name: investigate
+    parameters:
+      field:
+        examples:
+        - age
+        - biomarkers.EGFR
+        - lab_values.hb
+        required: true
+        type: string
+  - description: Check inclusion and exclusion criteria for a trial
+    name: check_criteria
+    parameters:
+      trial_id:
+        required: true
+        type: string
+  - description: Select a trial as the match for this patient
+    name: select_trial
+    parameters:
+      trial_id:
+        required: true
+        type: string
+  - description: End episode and compute final reward
+    name: resolve
+  type: enum
+api:
+  endpoints:
+    reset:
+      description: Start new episode, returns initial Observation
+      method: POST
+      path: /reset
+    state:
+      description: Get current Observation without taking action
+      method: GET
+      path: /state
+    step:
+      description: Take action, returns Observation, Reward, done, info
+      method: POST
+      path: /step
+    tasks:
+      description: List all available tasks
+      method: GET
+      path: /tasks
+author: ClinicalTrialMatchEnv Team
+baseline_scores:
+  ambiguous_match:
+    correct: true
+    model: meta-llama/Meta-Llama-3-70B-Instruct:novita
+    score: 0.54
+    steps: 17
+  competing_trials:
+    correct: true
+    model: meta-llama/Meta-Llama-3-70B-Instruct:novita
+    score: 0.65
+    steps: 3
+  contradictory_info:
+    correct: true
+    model: meta-llama/Meta-Llama-3-70B-Instruct:novita
+    score: 0.55
+    steps: 4
+  hidden_exclusion:
+    correct: true
+    model: meta-llama/Meta-Llama-3-70B-Instruct:novita
+    score: 0.73
+    steps: 4
+  multi_patient:
+    correct: false
+    model: meta-llama/Meta-Llama-3-70B-Instruct:novita
+    score: 0.0
+    steps: 17
+  single_match:
+    correct: true
+    model: meta-llama/Meta-Llama-3-70B-Instruct:novita
+    score: 0.9
+    steps: 5
+description: 'An OpenEnv environment where an AI agent matches cancer patients to
+  clinical trials. The agent reads patient charts with diagnosis, biomarkers, lab
+  values and prior treatments, then selects the correct clinical trial from a pool
+  of candidates. Penalizes unsafe matches where patient is ineligible for selected
+  trial.
+
+  '
+environment:
+  deterministic: true
+  difficulty_levels:
+  - easy
+  - medium
+  - hard
+  - expert
+  max_steps: 20
+  num_tasks: 6
+  type: sequential
+license: MIT
+name: ClinicalTrialMatchEnv
+observation_space:
+  fields:
+    available_trials:
+      description: List of candidate clinical trials with eligibility criteria
+      type: array
+    checked_trials:
+      description: Trials already checked for criteria this episode
+      type: array
+    done:
+      description: Whether episode is complete
+      type: boolean
+    investigated_fields:
+      description: Patient fields already investigated this episode
+      type: array
+    max_steps:
+      description: Maximum steps allowed per episode
+      type: integer
+    patient:
+      description: Full patient chart including diagnosis, biomarkers, lab values
+      type: object
+    selected_trial_id:
+      description: Currently selected trial ID or null
+      nullable: true
+      type: string
+    steps_taken:
+      description: Number of steps taken in current episode
+      type: integer
+    total_reward:
+      description: Cumulative reward this episode
+      type: float
+  type: object
+reward:
+  description: 'Reward is dominated by final decision correctness. Correct trial selection:
+    +1.0 Wrong trial selection: -1.0 Efficiency bonus (<=5 steps): +0.2 Intermediate
+    check_criteria: +0.05 (first time only) Repeated actions: -0.05 penalty
+
+    '
+  range:
+  - -1.2
+  - 1.2
+tasks:
+- baseline_score: 1.0
+  description: 'Patient has lung cancer. Pool of 3 trials. Exactly 1 eligible trial
+    with obvious wrong candidates. Agent should solve in 3 steps.
+
+    '
+  difficulty: easy
+  id: single_match
+  max_score: 1.0
+- baseline_score: 0.73
+  description: 'Patient has colon cancer. Pool of 5 trials. 2 trials pass inclusion
+    but fail exclusion (traps). Agent must carefully check both inclusion AND exclusion.
+
+    '
+  difficulty: medium
+  id: hidden_exclusion
+  max_score: 1.0
+- baseline_score: 0.54
+  description: 'Patient has lung cancer. Pool of 7 trials. 3 exclusion traps, 3 biomarker
+    failures. Agent must investigate biomarkers AND check all criteria.
+
+    '
+  difficulty: hard
+  id: ambiguous_match
+  max_score: 1.0
+- baseline_score: 0.0
+  description: 'Patient is eligible for 2 trials. Agent must pick the best match based
+    on biomarker expression quality and match score. Requires quality reasoning not
+    just eligibility checking.
+
+    '
+  difficulty: expert
+  id: competing_trials
+  max_score: 1.0
+- baseline_score: 0.0
+  description: 'Patient chart contains contradictory information. Agent must detect
+    the inconsistency using flag_contradiction action before selecting a trial. Tests
+    chart reading and anomaly detection.
+
+    '
+  difficulty: expert
+  id: contradictory_info
+  max_score: 1.0
+- baseline_score: 0.0
+  description: 'Agent must match 3 patients simultaneously to their correct trials.
+    Requires managing multiple patient contexts and using switch_case action.
+
+    '
+  difficulty: expert
+  id: multi_patient
+  max_score: 1.0
+version: 1.0.0

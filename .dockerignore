@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+.env
+*.env
+tests/
+.pytest_cache/
+.mypy_cache/
+*.log
+baseline_results.json
+test_inference_mock.py
+scripts/
+.DS_Store

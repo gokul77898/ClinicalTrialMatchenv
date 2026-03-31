@@ -1,0 +1,603 @@
+"""
+ClinicalTrialMatchEnv - Baseline Inference Script
+
+Runs an LLM agent against all 3 clinical trial matching tasks.
+
+Usage:
+    export API_BASE_URL="https://api.openai.com/v1"
+    export MODEL_NAME="gpt-4o-mini"
+    export HF_TOKEN="your-api-key-here"
+    python inference.py
+
+Environment Variables:
+    API_BASE_URL: Base URL for OpenAI-compatible API
+    MODEL_NAME:   Model identifier to use
+    HF_TOKEN:     API key for authentication
+"""
+
+import os
+import sys
+import json
+import time
+import subprocess
+import requests
+from openai import OpenAI
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# -----------------------------------------------
+# CONFIGURATION
+# -----------------------------------------------
+
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
+MODEL_NAME = os.environ.get("MODEL_NAME", "meta-llama/Meta-Llama-3-70B-Instruct:novita")
+HF_TOKEN = os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY", "")
+
+ENV_BASE_URL = "http://localhost:7860"
+MAX_STEPS_PER_TASK = 18
+TASKS = [
+    "single_match",
+    "hidden_exclusion",
+    "ambiguous_match",
+    "competing_trials",
+    "contradictory_info",
+    "multi_patient"
+]
+
+# -----------------------------------------------
+# SERVER MANAGEMENT
+# -----------------------------------------------
+
+def start_server():
+    """Start the FastAPI environment server."""
+    print("Starting environment server...")
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.path.dirname(os.path.abspath(__file__))
+
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "uvicorn",
+         "api.server:app",
+         "--host", "0.0.0.0",
+         "--port", "7860",
+         "--log-level", "error"],
+        env=env,
+        cwd=os.path.dirname(os.path.abspath(__file__))
+    )
+
+    # Wait for server to be ready (max 30 seconds)
+    for i in range(30):
+        try:
+            r = requests.get(f"{ENV_BASE_URL}/health", timeout=2)
+            if r.status_code == 200:
+                print(f"Server ready after {i+1} seconds")
+                return proc
+        except Exception:
+            pass
+        time.sleep(1)
+
+    proc.terminate()
+    raise RuntimeError("Server failed to start within 30 seconds")
+
+def stop_server(proc):
+    """Stop the FastAPI environment server."""
+    if proc:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    print("Server stopped")
+
+# -----------------------------------------------
+# ENVIRONMENT INTERACTION
+# -----------------------------------------------
+
+def env_reset(task_id: str) -> dict:
+    """Reset environment for a specific task."""
+    r = requests.post(
+        f"{ENV_BASE_URL}/reset",
+        json={"task_id": task_id},
+        timeout=10
+    )
+    r.raise_for_status()
+    return r.json()
+
+def env_step(action: dict) -> dict:
+    """Take a step in the environment."""
+    r = requests.post(
+        f"{ENV_BASE_URL}/step",
+        json=action,
+        timeout=10
+    )
+    r.raise_for_status()
+    return r.json()
+
+def env_get_tasks() -> list:
+    """Get list of available tasks."""
+    r = requests.get(f"{ENV_BASE_URL}/tasks", timeout=10)
+    r.raise_for_status()
+    return r.json()["tasks"]
+
+# -----------------------------------------------
+# LLM AGENT
+# -----------------------------------------------
+
+SYSTEM_PROMPT = """You are a clinical trial matching agent.
+
+Your job: Match a cancer patient to the correct clinical trial.
+
+RULES:
+- You must respond with ONLY a JSON object
+- No explanation, no markdown, no extra text
+- Just the raw JSON action
+
+AVAILABLE ACTIONS:
+
+Check a trial's eligibility criteria:
+{"type": "check_criteria", "trial_id": "TRIAL-XXX-1234"}
+
+Select the trial you think matches:
+{"type": "select_trial", "trial_id": "TRIAL-XXX-1234"}
+
+Flag a contradiction in the patient chart:
+{"type": "flag_contradiction", "reason": "lab values inconsistent with stage"}
+
+Switch to a different patient case (multi-patient mode):
+{"type": "switch_case", "case_id": "case_2"}
+
+End the episode (REQUIRED to finish):
+{"type": "resolve"}
+
+STRATEGY:
+1. Check criteria for each trial
+2. Select the trial where inclusion criteria pass AND exclusion does NOT trigger
+3. Call resolve to finish
+
+When you call check_criteria, you will receive:
+- inclusion_details: exactly which inclusion rules passed/failed
+- exclusion_details: exactly which exclusion rules triggered
+- biomarker_details: which biomarkers match or mismatch (including expression levels)
+- comorbidity_details: severity-aware comorbidity conflicts
+- prior_treatment_details: required/forbidden treatment matches
+- summary: plain English explanation of eligibility
+
+Patient data also includes:
+- biomarkers.EGFR_expression / ALK_expression (0.0-1.0 confidence)
+- lab_value_trends: direction (increasing/decreasing/stable) and rate for each lab value
+- comorbidities with severity levels (mild/moderate/severe)
+- prior_treatments list
+
+Trials may require:
+- Minimum biomarker expression levels
+- Specific prior treatments (required or forbidden)
+- Comorbidity severity thresholds for disallowed conditions
+
+Trial metadata also includes:
+- max_patients / enrolled_patients / has_capacity: trials at full capacity are ineligible
+- days_until_deadline / is_urgent: urgent trials (<=14 days) need priority
+- trial_score: quality score (0.0-1.0) for comparing eligible trials
+
+Additional actions available:
+- switch_case: switch active patient in multi-patient mode (requires case_id)
+- flag_contradiction: flag contradictory patient data (requires reason string)
+
+Use these details to make better decisions.
+
+CRITICAL: You MUST call resolve within 20 steps or you score 0.
+CRITICAL: Respond with JSON only. No other text."""
+
+def build_user_message(observation: dict, step_history: list) -> str:
+    """Build the user message for the LLM."""
+    patient = observation["patient"]
+    trials = observation["available_trials"]
+    steps_left = observation["max_steps"] - observation["steps_taken"]
+    checked = observation["checked_trials"]
+    selected = observation["selected_trial_id"]
+
+    # Build trial list
+    trial_lines = []
+    for t in trials:
+        status = "CHECKED" if t["trial_id"] in checked else "NOT CHECKED"
+        cap = f"cap={t.get('enrolled_patients',0)}/{t.get('max_patients',10)}" if 'max_patients' in t else ""
+        deadline = f"deadline={t.get('days_until_deadline','?')}d" if 'days_until_deadline' in t else ""
+        score = f"score={t.get('trial_score','?')}" if 'trial_score' in t else ""
+        extras = " | ".join(x for x in [cap, deadline, score] if x)
+        trial_lines.append(
+            f"  {t['trial_id']} | {t['cancer_type']} | {status} | {extras}"
+        )
+    trials_str = "\n".join(trial_lines)
+
+    # Build recent history (last 5 only)
+    recent = step_history[-5:] if len(step_history) > 5 else step_history
+    history_lines = []
+    for h in recent:
+        action = h["action"]
+        reward = h["reward"]
+        result = h.get("result_info", "")
+        summary = h.get("eligibility_summary", "")
+        line = f"  {action} -> reward={reward:.2f} {result}"
+        if summary:
+            line += f" | {summary}"
+        history_lines.append(line)
+    history_str = "\n".join(history_lines) if history_lines else "  (none)"
+
+    # Urgency message based on steps left
+    if steps_left <= 3:
+        urgency = f"URGENT: Only {steps_left} steps left! You MUST select_trial then resolve NOW!"
+    elif steps_left <= 6:
+        urgency = f"WARNING: Only {steps_left} steps left. Wrap up soon."
+    else:
+        urgency = f"Steps remaining: {steps_left}"
+
+    msg = f"""PATIENT: {patient['age']}yo {patient['gender']}, {patient['cancer_type']}, stage {patient['stage']}
+Biomarkers: EGFR={patient['biomarkers']['EGFR']}, ALK={patient['biomarkers']['ALK']}, PD_L1={patient['biomarkers']['PD_L1']}
+Labs: HB={patient['lab_values']['hb']}, WBC={patient['lab_values']['wbc']}, Creatinine={patient['lab_values']['creatinine']}
+Comorbidities: {patient.get('comorbidities', [])}
+
+TRIALS:
+{trials_str}
+
+SELECTED: {selected if selected else 'NONE - you must select then resolve'}
+{urgency}
+
+RECENT ACTIONS:
+{history_str}
+
+Respond with ONE JSON action only:"""
+
+    return msg
+
+def get_llm_action(
+    client: OpenAI,
+    observation: dict,
+    step_history: list,
+    task_max_steps: int = 18,
+    retry: int = 3
+) -> dict:
+    """Get next action from LLM with smart fallback."""
+
+    steps_taken = observation["steps_taken"]
+    max_steps = observation["max_steps"]
+    steps_left = max_steps - steps_taken
+    selected = observation["selected_trial_id"]
+    checked = observation["checked_trials"]
+    trials = [t["trial_id"] for t in observation["available_trials"]]
+
+    # HARD RULE 1: If only 2 steps left, force select+resolve
+    if steps_left <= 2:
+        if selected is None:
+            # Pick most promising trial
+            unchecked = [t for t in trials if t not in checked]
+            target = unchecked[0] if unchecked else trials[0]
+            print(f"  [FORCED] Selecting trial (steps critical): {target}")
+            return {"type": "select_trial", "trial_id": target}
+        else:
+            print(f"  [FORCED] Resolving (steps critical)")
+            return {"type": "resolve"}
+
+    # HARD RULE 2: If selected and last 2 actions were not resolve, force resolve
+    if selected is not None:
+        recent_types = [h["action"].get("type") for h in step_history[-2:]]
+        if "resolve" not in recent_types and steps_left <= 4:
+            print(f"  [FORCED] Resolving (trial selected, low steps)")
+            return {"type": "resolve"}
+
+    # HARD RULE 3: If all trials checked and none selected, pick the best one
+    all_checked = all(t in checked for t in trials)
+    if all_checked and selected is None:
+        print(f"  [FORCED] All trials checked, selecting first: {trials[0]}")
+        return {"type": "select_trial", "trial_id": trials[0]}
+
+    user_msg = build_user_message(observation, step_history)
+
+    for attempt in range(retry):
+        try:
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_msg}
+                ],
+                temperature=0.0,
+                max_tokens=80
+            )
+
+            raw = response.choices[0].message.content.strip()
+            print(f"  [LLM raw]: {raw[:150]}")
+
+            # Aggressive JSON extraction
+            raw_clean = raw
+
+            # Remove markdown
+            if "```" in raw_clean:
+                parts = raw_clean.split("```")
+                for part in parts:
+                    part = part.strip()
+                    if part.startswith("json"):
+                        part = part[4:].strip()
+                    if part.startswith("{"):
+                        raw_clean = part
+                        break
+
+            # Find JSON object in response
+            start = raw_clean.find("{")
+            end = raw_clean.rfind("}") + 1
+            if start >= 0 and end > start:
+                raw_clean = raw_clean[start:end]
+
+            action = json.loads(raw_clean)
+
+            # Validate action has required type
+            if "type" not in action:
+                raise ValueError("Action missing 'type' field")
+
+            valid_types = {
+                "investigate", "check_criteria",
+                "select_trial", "resolve",
+                "flag_contradiction", "switch_case"
+            }
+            if action["type"] not in valid_types:
+                raise ValueError(
+                    f"Invalid action type: {action['type']}"
+                )
+
+            # Validate required fields
+            if action["type"] == "investigate" and "field" not in action:
+                action["field"] = "age"
+            if action["type"] == "flag_contradiction" and "reason" not in action:
+                action["reason"] = "chart inconsistency detected"
+            if action["type"] == "switch_case" and "case_id" not in action:
+                action["case_id"] = "case_1"
+            if action["type"] in ("check_criteria", "select_trial"):
+                if "trial_id" not in action:
+                    unchecked = [t for t in trials if t not in checked]
+                    action["trial_id"] = (
+                        unchecked[0] if unchecked else trials[0]
+                    )
+
+            return action
+
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            print(f"  [Attempt {attempt+1}] Parse error: {e}")
+            if attempt == retry - 1:
+                # Smart fallback based on state
+                if selected is not None:
+                    print("  [Fallback] Resolving (trial already selected)")
+                    return {"type": "resolve"}
+                unchecked = [t for t in trials if t not in checked]
+                if unchecked:
+                    print(f"  [Fallback] Checking unchecked trial: {unchecked[0]}")
+                    return {
+                        "type": "check_criteria",
+                        "trial_id": unchecked[0]
+                    }
+                print(f"  [Fallback] Selecting: {trials[0]}")
+                return {"type": "select_trial", "trial_id": trials[0]}
+
+        except Exception as e:
+            print(f"  [Attempt {attempt+1}] API error: {e}")
+            if attempt == retry - 1:
+                if selected is not None:
+                    return {"type": "resolve"}
+                return {
+                    "type": "check_criteria",
+                    "trial_id": trials[0]
+                }
+            time.sleep(2)
+
+    return {"type": "resolve"}
+
+# -----------------------------------------------
+# RUN ONE TASK
+# -----------------------------------------------
+
+def get_max_steps(task_id: str) -> int:
+    """Get maximum steps allowed for a task."""
+    if task_id == "multi_patient":
+        return 25  # needs more steps for 3 patients
+    return 18
+
+def run_task(client: OpenAI, task_id: str) -> dict:
+    """Run LLM agent on one task."""
+    print(f"\n{'='*60}")
+    print(f"TASK: {task_id}")
+    print(f"{'='*60}")
+
+    observation = env_reset(task_id)
+
+    print(f"Patient: {observation['patient']['age']}yo "
+          f"{observation['patient']['gender']}, "
+          f"{observation['patient']['cancer_type']}, "
+          f"stage {observation['patient']['stage']}")
+    print(f"Trials available: "
+          f"{[t['trial_id'] for t in observation['available_trials']]}")
+
+    task_max_steps = get_max_steps(task_id)
+    step_history = []
+    done = False
+    grade = 0.0
+    steps = 0
+    final_info = {}
+
+    while not done and steps < task_max_steps:
+        steps += 1
+        print(f"\n  Step {steps}/{task_max_steps}:")
+
+        action = get_llm_action(client, observation, step_history, task_max_steps)
+        print(f"  -> Action: {action}")
+
+        try:
+            result = env_step(action)
+
+            observation = result["observation"]
+            reward_val = result["reward"]["value"]
+            done = result["done"]
+            info = result["info"]
+            reason = result["reward"].get("reason", "")
+
+            print(f"  <- Reward: {reward_val:.3f} | {reason}")
+
+            # Capture eligibility summary if available
+            eligibility_summary = info.get("summary", "")
+
+            step_history.append({
+                "action": action,
+                "reward": reward_val,
+                "done": done,
+                "result_info": reason,
+                "eligibility_summary": eligibility_summary
+            })
+
+            if done:
+                grade = info.get("grade", 0.0)
+                final_info = info
+                break
+
+        except requests.exceptions.HTTPError as e:
+            print(f"  Step HTTP error: {e}")
+            if e.response.status_code == 400:
+                print("  Episode already done")
+                break
+            time.sleep(1)
+        except Exception as e:
+            print(f"  Step error: {e}")
+            time.sleep(1)
+
+    # If not done after loop, force resolve
+    if not done:
+        print(f"\n  Max steps reached. Forcing resolve...")
+        try:
+            # First select a trial if none selected
+            if observation["selected_trial_id"] is None:
+                trials = [
+                    t["trial_id"]
+                    for t in observation["available_trials"]
+                ]
+                checked = observation["checked_trials"]
+                target = checked[0] if checked else trials[0]
+                env_step({
+                    "type": "select_trial",
+                    "trial_id": target
+                })
+
+            result = env_step({"type": "resolve"})
+            grade = result["info"].get("grade", 0.0)
+            final_info = result["info"]
+            done = True
+        except Exception as e:
+            print(f"  Force resolve failed: {e}")
+            grade = 0.0
+
+    correct = final_info.get("correct", False)
+
+    print(f"\n  {'='*40}")
+    print(f"  TASK RESULT: {task_id}")
+    print(f"  Grade:   {grade:.4f}")
+    print(f"  Correct: {correct}")
+    print(f"  Steps:   {steps}")
+    print(f"  {'='*40}")
+
+    return {
+        "task_id": task_id,
+        "grade": grade,
+        "correct": correct,
+        "steps": steps,
+        "done": done
+    }
+
+# -----------------------------------------------
+# MAIN
+# -----------------------------------------------
+
+def main():
+    print("=" * 60)
+    print("ClinicalTrialMatchEnv - Baseline Inference")
+    print("=" * 60)
+
+    # Validate environment variables
+    if not HF_TOKEN:
+        print("ERROR: HF_TOKEN environment variable not set")
+        print("Usage: export HF_TOKEN=your-api-key")
+        sys.exit(1)
+
+    print(f"API Base URL: {API_BASE_URL}")
+    print(f"Model: {MODEL_NAME}")
+    print(f"Tasks: {TASKS}")
+
+    # Initialize OpenAI client
+    client = OpenAI(
+        base_url=API_BASE_URL,
+        api_key=HF_TOKEN
+    )
+
+    # Start environment server
+    server_proc = None
+    try:
+        server_proc = start_server()
+    except RuntimeError as e:
+        print(f"ERROR: {e}")
+        sys.exit(1)
+
+    # Run all tasks
+    results = []
+    try:
+        for task_id in TASKS:
+            try:
+                result = run_task(client, task_id)
+                results.append(result)
+            except Exception as e:
+                print(f"ERROR on task {task_id}: {e}")
+                results.append({
+                    "task_id": task_id,
+                    "grade": 0.0,
+                    "correct": False,
+                    "steps": 0,
+                    "done": False,
+                    "error": str(e)
+                })
+    finally:
+        stop_server(server_proc)
+
+    # Print final results
+    print("\n")
+    print("=" * 60)
+    print("BASELINE RESULTS")
+    print("=" * 60)
+    print(f"{'Task':<25} {'Grade':<10} {'Correct':<10} {'Steps':<8}")
+    print("-" * 60)
+
+    total_grade = 0.0
+    for r in results:
+        grade = r.get("grade", 0.0)
+        correct = r.get("correct", False)
+        steps = r.get("steps", 0)
+        total_grade += grade
+        print(f"{r['task_id']:<25} {grade:<10.4f} {str(correct):<10} {steps:<8}")
+
+    avg_grade = total_grade / len(results) if results else 0.0
+    print("-" * 60)
+    print(f"{'AVERAGE':<25} {avg_grade:<10.4f}")
+    print("=" * 60)
+
+    # Save results to file
+    results_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "baseline_results.json"
+    )
+    with open(results_path, "w") as f:
+        json.dump({
+            "model": MODEL_NAME,
+            "api_base_url": API_BASE_URL,
+            "results": results,
+            "average_grade": avg_grade
+        }, f, indent=2)
+    print(f"\nResults saved to: {results_path}")
+
+    # Exit 0 if all tasks completed
+    all_done = all(r.get("done", False) for r in results)
+    sys.exit(0 if all_done else 1)
+
+if __name__ == "__main__":
+    main()
