@@ -428,33 +428,33 @@ def get_max_steps(task_id: str) -> int:
         return 25  # needs more steps for 3 patients
     return 18
 
-def _log(tag: str, data: dict):
-    """Emit a structured log line: [TAG] {json}"""
-    print(f"[{tag}] {json.dumps(data)}", flush=True)
+def _log_start(task: str, env: str, model: str):
+    """Emit [START] log in hackathon format."""
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+
+def _log_step(step: int, action: str, reward: float, done: bool, error: str = "null"):
+    """Emit [STEP] log in hackathon format."""
+    done_str = "true" if done else "false"
+    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_str} error={error}", flush=True)
+
+
+def _log_end(success: bool, steps: int, score: float, rewards: list):
+    """Emit [END] log in hackathon format."""
+    success_str = "true" if success else "false"
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(f"[END] success={success_str} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
 
 
 def run_task(client: OpenAI, task_id: str) -> dict:
     """Run LLM agent on one task."""
-    from datetime import datetime, timezone
-
     observation = env_reset(task_id)
-
     task_max_steps = get_max_steps(task_id)
 
-    _log("START", {
-        "task_id": task_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "patient": {
-            "age": observation["patient"]["age"],
-            "gender": observation["patient"]["gender"],
-            "cancer_type": observation["patient"]["cancer_type"],
-            "stage": observation["patient"]["stage"],
-        },
-        "num_trials": len(observation["available_trials"]),
-        "max_steps": task_max_steps,
-    })
+    _log_start(task=task_id, env="ClinicalTrialMatchEnv", model=MODEL_NAME)
 
     step_history = []
+    rewards_list = []
     done = False
     grade = 0.0
     steps = 0
@@ -464,6 +464,7 @@ def run_task(client: OpenAI, task_id: str) -> dict:
         steps += 1
 
         action = get_llm_action(client, observation, step_history, task_max_steps)
+        action_str = json.dumps(action)
 
         try:
             result = env_step(action)
@@ -474,14 +475,8 @@ def run_task(client: OpenAI, task_id: str) -> dict:
             info = result["info"]
             reason = result["reward"].get("reason", "")
 
-            _log("STEP", {
-                "task_id": task_id,
-                "step": steps,
-                "action": action,
-                "reward": round(reward_val, 4),
-                "done": done,
-                "info": reason,
-            })
+            rewards_list.append(reward_val)
+            _log_step(step=steps, action=action_str, reward=reward_val, done=done, error="null")
 
             # Capture eligibility summary if available
             eligibility_summary = info.get("summary", "")
@@ -500,26 +495,16 @@ def run_task(client: OpenAI, task_id: str) -> dict:
                 break
 
         except requests.exceptions.HTTPError as e:
-            _log("STEP", {
-                "task_id": task_id,
-                "step": steps,
-                "action": action,
-                "reward": 0.0,
-                "done": False,
-                "info": f"HTTP error: {e}",
-            })
+            error_msg = f"HTTP_{e.response.status_code}"
+            rewards_list.append(0.0)
+            _log_step(step=steps, action=action_str, reward=0.0, done=False, error=error_msg)
             if e.response.status_code == 400:
                 break
             time.sleep(1)
         except Exception as e:
-            _log("STEP", {
-                "task_id": task_id,
-                "step": steps,
-                "action": action,
-                "reward": 0.0,
-                "done": False,
-                "info": f"Error: {e}",
-            })
+            error_msg = str(e).replace(" ", "_")[:50]
+            rewards_list.append(0.0)
+            _log_step(step=steps, action=action_str, reward=0.0, done=False, error=error_msg)
             time.sleep(1)
 
     # If not done after loop, force resolve
@@ -547,13 +532,7 @@ def run_task(client: OpenAI, task_id: str) -> dict:
 
     correct = final_info.get("correct", False)
 
-    _log("END", {
-        "task_id": task_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "grade": round(grade, 4),
-        "correct": correct,
-        "steps": steps,
-    })
+    _log_end(success=correct, steps=steps, score=grade, rewards=rewards_list)
 
     return {
         "task_id": task_id,
@@ -568,21 +547,11 @@ def run_task(client: OpenAI, task_id: str) -> dict:
 # -----------------------------------------------
 
 def main():
-    from datetime import datetime, timezone
-
     # Validate environment variables
     if not HF_TOKEN:
         print("ERROR: HF_TOKEN environment variable not set")
         print("Usage: export HF_TOKEN=your-api-key")
         sys.exit(1)
-
-    _log("START", {
-        "run": "ClinicalTrialMatchEnv",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "model": MODEL_NAME,
-        "api_base_url": API_BASE_URL,
-        "tasks": TASKS,
-    })
 
     # Initialize OpenAI client
     client = OpenAI(
@@ -606,14 +575,7 @@ def main():
                 result = run_task(client, task_id)
                 results.append(result)
             except Exception as e:
-                _log("END", {
-                    "task_id": task_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "grade": 0.0,
-                    "correct": False,
-                    "steps": 0,
-                    "error": str(e),
-                })
+                _log_end(success=False, steps=0, score=0.0, rewards=[])
                 results.append({
                     "task_id": task_id,
                     "grade": 0.0,
@@ -630,21 +592,6 @@ def main():
     for r in results:
         total_grade += r.get("grade", 0.0)
     avg_grade = total_grade / len(results) if results else 0.0
-
-    _log("END", {
-        "run": "ClinicalTrialMatchEnv",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "average_grade": round(avg_grade, 4),
-        "results": [
-            {
-                "task_id": r["task_id"],
-                "grade": round(r.get("grade", 0.0), 4),
-                "correct": r.get("correct", False),
-                "steps": r.get("steps", 0),
-            }
-            for r in results
-        ],
-    })
 
     # Save results to file
     results_path = os.path.join(
