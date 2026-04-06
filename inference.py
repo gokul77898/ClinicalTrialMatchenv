@@ -428,22 +428,32 @@ def get_max_steps(task_id: str) -> int:
         return 25  # needs more steps for 3 patients
     return 18
 
+def _log(tag: str, data: dict):
+    """Emit a structured log line: [TAG] {json}"""
+    print(f"[{tag}] {json.dumps(data)}", flush=True)
+
+
 def run_task(client: OpenAI, task_id: str) -> dict:
     """Run LLM agent on one task."""
-    print(f"\n{'='*60}")
-    print(f"TASK: {task_id}")
-    print(f"{'='*60}")
+    from datetime import datetime, timezone
 
     observation = env_reset(task_id)
 
-    print(f"Patient: {observation['patient']['age']}yo "
-          f"{observation['patient']['gender']}, "
-          f"{observation['patient']['cancer_type']}, "
-          f"stage {observation['patient']['stage']}")
-    print(f"Trials available: "
-          f"{[t['trial_id'] for t in observation['available_trials']]}")
-
     task_max_steps = get_max_steps(task_id)
+
+    _log("START", {
+        "task_id": task_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "patient": {
+            "age": observation["patient"]["age"],
+            "gender": observation["patient"]["gender"],
+            "cancer_type": observation["patient"]["cancer_type"],
+            "stage": observation["patient"]["stage"],
+        },
+        "num_trials": len(observation["available_trials"]),
+        "max_steps": task_max_steps,
+    })
+
     step_history = []
     done = False
     grade = 0.0
@@ -452,10 +462,8 @@ def run_task(client: OpenAI, task_id: str) -> dict:
 
     while not done and steps < task_max_steps:
         steps += 1
-        print(f"\n  Step {steps}/{task_max_steps}:")
 
         action = get_llm_action(client, observation, step_history, task_max_steps)
-        print(f"  -> Action: {action}")
 
         try:
             result = env_step(action)
@@ -466,7 +474,14 @@ def run_task(client: OpenAI, task_id: str) -> dict:
             info = result["info"]
             reason = result["reward"].get("reason", "")
 
-            print(f"  <- Reward: {reward_val:.3f} | {reason}")
+            _log("STEP", {
+                "task_id": task_id,
+                "step": steps,
+                "action": action,
+                "reward": round(reward_val, 4),
+                "done": done,
+                "info": reason,
+            })
 
             # Capture eligibility summary if available
             eligibility_summary = info.get("summary", "")
@@ -485,18 +500,30 @@ def run_task(client: OpenAI, task_id: str) -> dict:
                 break
 
         except requests.exceptions.HTTPError as e:
-            print(f"  Step HTTP error: {e}")
+            _log("STEP", {
+                "task_id": task_id,
+                "step": steps,
+                "action": action,
+                "reward": 0.0,
+                "done": False,
+                "info": f"HTTP error: {e}",
+            })
             if e.response.status_code == 400:
-                print("  Episode already done")
                 break
             time.sleep(1)
         except Exception as e:
-            print(f"  Step error: {e}")
+            _log("STEP", {
+                "task_id": task_id,
+                "step": steps,
+                "action": action,
+                "reward": 0.0,
+                "done": False,
+                "info": f"Error: {e}",
+            })
             time.sleep(1)
 
     # If not done after loop, force resolve
     if not done:
-        print(f"\n  Max steps reached. Forcing resolve...")
         try:
             # First select a trial if none selected
             if observation["selected_trial_id"] is None:
@@ -516,17 +543,17 @@ def run_task(client: OpenAI, task_id: str) -> dict:
             final_info = result["info"]
             done = True
         except Exception as e:
-            print(f"  Force resolve failed: {e}")
             grade = 0.0
 
     correct = final_info.get("correct", False)
 
-    print(f"\n  {'='*40}")
-    print(f"  TASK RESULT: {task_id}")
-    print(f"  Grade:   {grade:.4f}")
-    print(f"  Correct: {correct}")
-    print(f"  Steps:   {steps}")
-    print(f"  {'='*40}")
+    _log("END", {
+        "task_id": task_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "grade": round(grade, 4),
+        "correct": correct,
+        "steps": steps,
+    })
 
     return {
         "task_id": task_id,
@@ -541,9 +568,7 @@ def run_task(client: OpenAI, task_id: str) -> dict:
 # -----------------------------------------------
 
 def main():
-    print("=" * 60)
-    print("ClinicalTrialMatchEnv - Baseline Inference")
-    print("=" * 60)
+    from datetime import datetime, timezone
 
     # Validate environment variables
     if not HF_TOKEN:
@@ -551,9 +576,13 @@ def main():
         print("Usage: export HF_TOKEN=your-api-key")
         sys.exit(1)
 
-    print(f"API Base URL: {API_BASE_URL}")
-    print(f"Model: {MODEL_NAME}")
-    print(f"Tasks: {TASKS}")
+    _log("START", {
+        "run": "ClinicalTrialMatchEnv",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "model": MODEL_NAME,
+        "api_base_url": API_BASE_URL,
+        "tasks": TASKS,
+    })
 
     # Initialize OpenAI client
     client = OpenAI(
@@ -577,7 +606,14 @@ def main():
                 result = run_task(client, task_id)
                 results.append(result)
             except Exception as e:
-                print(f"ERROR on task {task_id}: {e}")
+                _log("END", {
+                    "task_id": task_id,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "grade": 0.0,
+                    "correct": False,
+                    "steps": 0,
+                    "error": str(e),
+                })
                 results.append({
                     "task_id": task_id,
                     "grade": 0.0,
@@ -589,26 +625,26 @@ def main():
     finally:
         stop_server(server_proc)
 
-    # Print final results
-    print("\n")
-    print("=" * 60)
-    print("BASELINE RESULTS")
-    print("=" * 60)
-    print(f"{'Task':<25} {'Grade':<10} {'Correct':<10} {'Steps':<8}")
-    print("-" * 60)
-
+    # Compute summary
     total_grade = 0.0
     for r in results:
-        grade = r.get("grade", 0.0)
-        correct = r.get("correct", False)
-        steps = r.get("steps", 0)
-        total_grade += grade
-        print(f"{r['task_id']:<25} {grade:<10.4f} {str(correct):<10} {steps:<8}")
-
+        total_grade += r.get("grade", 0.0)
     avg_grade = total_grade / len(results) if results else 0.0
-    print("-" * 60)
-    print(f"{'AVERAGE':<25} {avg_grade:<10.4f}")
-    print("=" * 60)
+
+    _log("END", {
+        "run": "ClinicalTrialMatchEnv",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "average_grade": round(avg_grade, 4),
+        "results": [
+            {
+                "task_id": r["task_id"],
+                "grade": round(r.get("grade", 0.0), 4),
+                "correct": r.get("correct", False),
+                "steps": r.get("steps", 0),
+            }
+            for r in results
+        ],
+    })
 
     # Save results to file
     results_path = os.path.join(
@@ -622,7 +658,6 @@ def main():
             "results": results,
             "average_grade": avg_grade
         }, f, indent=2)
-    print(f"\nResults saved to: {results_path}")
 
     # Exit 0 if all tasks completed
     all_done = all(r.get("done", False) for r in results)
