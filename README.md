@@ -6,7 +6,7 @@
 
 ### Can your AI agent save a cancer patient's life?
 
-[![HuggingFace Space](https://img.shields.io/badge/🤗%20Live%20Demo-HuggingFace-yellow?style=for-the-badge)](https://huggingface.co/spaces/OmilosAISolutions/ClinicalTrialMatchEnv)
+[![HuggingFace Space](https://img.shields.io/badge/🤗%20Live%20Demo-HuggingFace-yellow?style=for-the-badge)](https://huggingface.co/spaces/gokul789340/ClinicalTrialMatchEnv)
 [![Tests](https://img.shields.io/badge/118_Tests-Passing-brightgreen?style=for-the-badge)]()
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)]()
 [![OpenEnv](https://img.shields.io/badge/OpenEnv-Compliant-8B5CF6?style=for-the-badge)]()
@@ -18,7 +18,7 @@
 
 *This is the same task oncology nurses spend hours on daily at every major hospital. A $50B problem.*
 
-**[Try it Live](https://OmilosAISolutions-clinicaltrialmatchenv.hf.space/health)** · **[Run Locally](#-get-started-in-60-seconds)** · **[See Results](#-baseline-results)** · **[Read the Spec](openenv.yaml)**
+**[Try it Live](https://gokul789340-clinicaltrialmatchenv.hf.space/health)** · **[Run Locally](#-get-started-in-60-seconds)** · **[See Results](#-baseline-results)** · **[Read the Spec](openenv.yaml)**
 
 </div>
 
@@ -52,7 +52,7 @@ uvicorn api.server:app --host 0.0.0.0 --port 7860
 
 **Option 3: Use the live API directly**
 ```bash
-curl https://OmilosAISolutions-clinicaltrialmatchenv.hf.space/health
+curl https://gokul789340-clinicaltrialmatchenv.hf.space/health
 # → {"status":"ok","environment":"ClinicalTrialMatchEnv"}
 ```
 
