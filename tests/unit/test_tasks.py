@@ -22,13 +22,13 @@ class TestTasks:
     def test_all_tasks_exist(self):
         """Test 1: All 6 tasks exist with correct IDs."""
         print("\n" + "="*80)
-        print("TEST 1: All 6 tasks exist")
+        print("TEST 1: All 7 tasks exist")
         print("="*80)
         
         tasks = list_tasks()
         
         print(f"\nTotal tasks: {len(tasks)}")
-        assert len(tasks) == 6, f"Expected 6 tasks, got {len(tasks)}"
+        assert len(tasks) == 7, f"Expected 7 tasks, got {len(tasks)}"
         
         ids = [t.task_id for t in tasks]
         print(f"Task IDs: {ids}")
@@ -38,12 +38,13 @@ class TestTasks:
         assert "hidden_exclusion" in ids, "Task 'hidden_exclusion' not found"
         assert "ambiguous_match" in ids, "Task 'ambiguous_match' not found"
         
-        # Extended 3 tasks
+        # Extended 4 tasks
         assert "multi_patient" in ids, "Task 'multi_patient' not found"
         assert "competing_trials" in ids, "Task 'competing_trials' not found"
         assert "contradictory_info" in ids, "Task 'contradictory_info' not found"
+        assert "logical_inference" in ids, "Task 'logical_inference' not found"
         
-        print("\n✅ PASSED: All 6 tasks exist")
+        print("\n✅ PASSED: All 7 tasks exist")
     
     def test_each_task_has_exactly_one_eligible_trial(self):
         """Test 2: Each task has correct eligible trial structure."""

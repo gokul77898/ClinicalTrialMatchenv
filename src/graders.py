@@ -380,6 +380,65 @@ def grade_contradictory_info(episode: EpisodeHistory) -> float:
     return round(min(1.0, max(0.0, raw)), 4)
 
 
+def grade_logical_inference(episode: EpisodeHistory) -> float:
+    """
+    Grade agent performance on logical_inference task (brutal/expert difficulty).
+    
+    Scoring:
+    - Correct selection: 0.4
+    - Investigated biomarker expression: 0.15
+    - Investigated lab values (detected unknown): 0.15
+    - Investigated interaction-relevant fields (age + wbc): 0.15
+    - Checked conflict (investigate_conflict action): 0.15
+    
+    Args:
+        episode: Episode history
+    
+    Returns:
+        float: Score between 0.0 and 1.0
+    """
+    if episode.final_selected_trial_id is None:
+        return 0.0
+    
+    actions = episode.actions_taken
+    investigated = set(
+        a.get("field", "") for a in actions
+        if a["type"] == "investigate"
+    )
+    
+    # Correct selection
+    if episode.final_selected_trial_id == episode.correct_trial_id:
+        selection_score = 0.4
+    else:
+        selection_score = 0.0
+    
+    # Process scores
+    process_score = 0.0
+    
+    # Checked biomarker expression
+    if "biomarkers.EGFR_expression" in investigated:
+        process_score += 0.15
+    
+    # Investigated lab values (creatinine is unknown)
+    if "lab_values.creatinine" in investigated:
+        process_score += 0.15
+    
+    # Investigated interaction-relevant fields
+    if "age" in investigated and ("lab_values.wbc" in investigated or "lab_values.creatinine" in investigated):
+        process_score += 0.15
+    
+    # Used investigate_conflict action
+    conflict_checked = any(
+        a["type"] == "investigate_conflict"
+        for a in actions
+    )
+    if conflict_checked:
+        process_score += 0.15
+    
+    raw = selection_score + process_score
+    return round(min(1.0, max(0.0, raw)), 4)
+
+
 def grade_task(task_id: str, episode: EpisodeHistory) -> float:
     """
     Route to appropriate grader based on task_id.
@@ -406,5 +465,7 @@ def grade_task(task_id: str, episode: EpisodeHistory) -> float:
         return grade_competing_trials(episode)
     elif task_id == "contradictory_info":
         return grade_contradictory_info(episode)
+    elif task_id == "logical_inference":
+        return grade_logical_inference(episode)
     else:
         raise ValueError(f"Unknown task_id: {task_id}")

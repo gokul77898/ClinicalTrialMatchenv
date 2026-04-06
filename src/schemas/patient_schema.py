@@ -4,7 +4,7 @@ Uses Pydantic for strict validation with no tolerance for invalid/missing data.
 """
 
 from pydantic import BaseModel, Field, field_validator, ConfigDict
-from typing import Literal
+from typing import Literal, Optional
 from uuid import UUID, uuid4
 import random
 
@@ -38,12 +38,25 @@ class LabValueTrend(BaseModel):
 
 
 class LabValues(BaseModel):
-    """Lab values with exact required keys and strict ranges."""
+    """Lab values with exact required keys and strict ranges.
+    Values may be None (unknown) if lab test was not performed."""
     model_config = ConfigDict(extra='forbid')
     
-    hb: float = Field(ge=0, le=20)
-    wbc: float = Field(ge=0, le=20000)
-    creatinine: float = Field(ge=0, le=10)
+    hb: Optional[float] = Field(None, ge=0, le=20)
+    wbc: Optional[float] = Field(None, ge=0, le=20000)
+    creatinine: Optional[float] = Field(None, ge=0, le=10)
+
+    @property
+    def hb_unknown(self) -> bool:
+        return self.hb is None
+
+    @property
+    def wbc_unknown(self) -> bool:
+        return self.wbc is None
+
+    @property
+    def creatinine_unknown(self) -> bool:
+        return self.creatinine is None
 
 
 class Patient(BaseModel):
@@ -67,6 +80,8 @@ class Patient(BaseModel):
     lab_values: LabValues
     lab_value_trends: list[LabValueTrend] = Field(default_factory=list)
     comorbidities: list[Comorbidity] = Field(default_factory=list)
+    conflicting_fields: dict = Field(default_factory=dict)
+    data_freshness_days: int = Field(default=0, ge=0, le=365)
     
     @field_validator('cancer_type')
     @classmethod
@@ -126,12 +141,39 @@ def generate_random_patient(seed: int = None) -> Patient:
     else:
         alk_expression = round(random.uniform(0.0, 0.4), 3)
 
+    # Lab values with 15% chance of being unknown
+    hb_val = None if random.random() < 0.15 else round(
+        random.uniform(8.0, 16.0), 2
+    )
+    wbc_val = None if random.random() < 0.15 else round(
+        random.uniform(3000, 15000), 2
+    )
+    creatinine_val = None if random.random() < 0.15 else round(
+        random.uniform(0.5, 2.5), 2
+    )
+
+    patient_stage = random.choice(["I", "II", "III", "IV"])
+
+    # 20% chance of conflicting stage report
+    if random.random() < 0.20:
+        conflicting_fields = {
+            "stage": {
+                "reported": patient_stage,
+                "notes_say": "II" if patient_stage == "III" else "III",
+                "confidence": "low"
+            }
+        }
+    else:
+        conflicting_fields = {}
+
+    data_freshness_days = random.randint(0, 180)
+
     patient = Patient(
         id=patient_id,
         age=random.randint(30, 85),
         gender=random.choice(["male", "female", "other"]),
         cancer_type=random.choice(cancer_types),
-        stage=random.choice(["I", "II", "III", "IV"]),
+        stage=patient_stage,
         biomarkers=Biomarkers(
             EGFR=egfr_val,
             ALK=alk_val,
@@ -144,9 +186,9 @@ def generate_random_patient(seed: int = None) -> Patient:
             k=random.randint(0, 3)
         ),
         lab_values=LabValues(
-            hb=round(random.uniform(8.0, 16.0), 2),
-            wbc=round(random.uniform(3000, 15000), 2),
-            creatinine=round(random.uniform(0.5, 2.5), 2)
+            hb=hb_val,
+            wbc=wbc_val,
+            creatinine=creatinine_val
         ),
         lab_value_trends=[
             LabValueTrend(
@@ -162,7 +204,9 @@ def generate_random_patient(seed: int = None) -> Patient:
                 severity=random.choice(["mild", "moderate", "severe"])
             )
             for _ in range(random.randint(0, 2))
-        ]
+        ],
+        conflicting_fields=conflicting_fields,
+        data_freshness_days=data_freshness_days
     )
     
     return patient

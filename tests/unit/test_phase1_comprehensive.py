@@ -51,9 +51,12 @@ class TestDataIntegrity:
             assert isinstance(patient.prior_treatments, list), f"Patient {i}: prior_treatments is not list"
             
             assert patient.lab_values is not None, f"Patient {i}: lab_values is None"
-            assert 0 <= patient.lab_values.hb <= 20, f"Patient {i}: hb out of range"
-            assert 0 <= patient.lab_values.wbc <= 20000, f"Patient {i}: wbc out of range"
-            assert 0 <= patient.lab_values.creatinine <= 10, f"Patient {i}: creatinine out of range"
+            if patient.lab_values.hb is not None:
+                assert 0 <= patient.lab_values.hb <= 20, f"Patient {i}: hb out of range"
+            if patient.lab_values.wbc is not None:
+                assert 0 <= patient.lab_values.wbc <= 20000, f"Patient {i}: wbc out of range"
+            if patient.lab_values.creatinine is not None:
+                assert 0 <= patient.lab_values.creatinine <= 10, f"Patient {i}: creatinine out of range"
             
             assert patient.comorbidities is not None, f"Patient {i}: comorbidities is None"
             assert isinstance(patient.comorbidities, list), f"Patient {i}: comorbidities is not list"

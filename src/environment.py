@@ -167,6 +167,9 @@ class ClinicalTrialEnv:
         elif action.type == "flag_contradiction":
             reward_value, reason, info = self._action_flag_contradiction(action.reason)
             self._actions_history.append({"type": "flag_contradiction", "reason": action.reason})
+        elif action.type == "investigate_conflict":
+            reward_value, reason, info = self._action_investigate_conflict(action.field)
+            self._actions_history.append({"type": "investigate_conflict", "field": action.field})
         elif action.type == "resolve":
             reward_value, reason, is_terminal, info = self._action_resolve()
             self._actions_history.append({"type": "resolve"})
@@ -229,12 +232,19 @@ class ClinicalTrialEnv:
                 trial.required_biomarkers.ALK is not None or
                 trial.required_biomarkers.PD_L1 is not None
             )
+            has_expr_thresholds = (
+                trial.required_biomarkers.EGFR_expression_min is not None or
+                trial.required_biomarkers.ALK_expression_min is not None
+            )
+            has_interaction_rules = len(trial.interaction_exclusions) > 0
             available_trials.append({
                 "trial_id": trial.trial_id,
                 "cancer_type": trial.cancer_type,
                 "num_inclusion_rules": len(trial.inclusion_criteria),
                 "num_exclusion_rules": len(trial.exclusion_criteria),
                 "has_biomarker_requirements": has_biomarker_req,
+                "has_expression_thresholds": has_expr_thresholds,
+                "has_interaction_rules": has_interaction_rules,
                 "max_patients": trial.max_patients,
                 "enrolled_patients": trial.enrolled_patients,
                 "has_capacity": trial.has_capacity,
@@ -329,23 +339,34 @@ class ClinicalTrialEnv:
         try:
             value = get_nested_value(self._patient, field)
             self._investigated_fields.append(field)
+            
+            # Return "unknown" for None values
+            if value is None:
+                return 0.0, f"Field '{field}' = unknown (lab test not performed)", {"value": "unknown"}
+            
+            # Check if this field has a conflict
+            field_base = field.split(".")[-1] if "." in field else field
+            if field_base in self._patient.conflicting_fields:
+                conflict = self._patient.conflicting_fields[field_base]
+                return 0.0, (
+                    f"Field '{field}' = {value} "
+                    f"(NOTE: conflicting report suggests {conflict['notes_say']}, "
+                    f"confidence: {conflict['confidence']} — verify before matching)"
+                ), {"value": value, "has_conflict": True}
+            
             return 0.0, f"Field '{field}' = {value}", {"value": value}
         except ValueError as e:
             return -0.05, f"Invalid field: {field}", {"penalty": True}
     
     def _action_check_criteria(self, trial_id: str) -> tuple[float, str, dict]:
         """
-        Execute check_criteria action.
+        Execute check_criteria action with task-aware guidance levels.
         
-        Args:
-            trial_id: Trial ID to check
-        
-        Returns:
-            tuple: (reward, reason, info)
+        Easy tasks: full details + summary
+        Medium tasks: boolean flags + hint
+        Hard/Expert tasks: boolean flags only (minimal)
         """
-        # Validate trial_id
-        trial_ids = [t.trial_id for t in self._trials]
-        if trial_id not in trial_ids:
+        if trial_id not in [t.trial_id for t in self._trials]:
             return -0.05, f"Unknown trial_id: {trial_id}", {"penalty": True}
         
         # In multi mode, use per-case checked_trials
@@ -364,15 +385,59 @@ class ClinicalTrialEnv:
             details = get_eligibility_details(self._patient, trial)
             self._checked_trials.append(trial_id)
         
-        return 0.05, f"Inclusion: {details['inclusion_pass']}, Exclusion triggered: {details['exclusion_triggered']}", {
-            "inclusion_pass": details["inclusion_pass"],
-            "exclusion_triggered": details["exclusion_triggered"],
-            "inclusion_details": details["inclusion_details"],
-            "exclusion_details": details["exclusion_details"],
-            "biomarker_details": details["biomarker_details"],
-            "comorbidity_details": details["comorbidity_details"],
-            "summary": details["summary"]
-        }
+        # Determine guidance level from current task difficulty
+        difficulty = "easy"
+        if self._current_task is not None:
+            difficulty = getattr(self._current_task, 'difficulty', 'easy')
+        
+        if difficulty == "easy":
+            # Full guidance — easy task must be solvable
+            info = {
+                "inclusion_pass": details["inclusion_pass"],
+                "exclusion_triggered": details["exclusion_triggered"],
+                "biomarkers_pass": details["biomarkers_pass"],
+                "prior_treatments_pass": details.get(
+                    "prior_treatment_details", {}
+                ).get("passed", True),
+                "capacity_available": details.get(
+                    "capacity_details", {}
+                ).get("has_capacity", True),
+                "eligible": details["eligible"],
+                "summary": details["summary"],
+                "inclusion_details": details["inclusion_details"],
+                "exclusion_details": details["exclusion_details"]
+            }
+        elif difficulty == "medium":
+            # Partial guidance — tells what failed but not why
+            info = {
+                "inclusion_pass": details["inclusion_pass"],
+                "exclusion_triggered": details["exclusion_triggered"],
+                "biomarkers_pass": details["biomarkers_pass"],
+                "prior_treatments_pass": details.get(
+                    "prior_treatment_details", {}
+                ).get("passed", True),
+                "capacity_available": details.get(
+                    "capacity_details", {}
+                ).get("has_capacity", True),
+                "eligible": details["eligible"],
+                "hint": "Check patient fields that correspond to failed criteria"
+            }
+        else:
+            # Minimal guidance — hard/expert tasks
+            info = {
+                "inclusion_pass": details["inclusion_pass"],
+                "exclusion_triggered": details["exclusion_triggered"],
+                "biomarkers_pass": details["biomarkers_pass"],
+                "prior_treatments_pass": details.get(
+                    "prior_treatment_details", {}
+                ).get("passed", True),
+                "capacity_available": details.get(
+                    "capacity_details", {}
+                ).get("has_capacity", True),
+                "eligible": details["eligible"]
+            }
+        
+        return 0.05, f"Criteria checked for {trial_id}", info
     
     def _action_select_trial(self, trial_id: str) -> tuple[float, str, dict]:
         """
@@ -438,6 +503,24 @@ class ClinicalTrialEnv:
         
         self._flagged_contradictions.append(reason)
         return 0.1, f"Contradiction flagged: {reason}", {"flagged": reason}
+    
+    def _action_investigate_conflict(self, field: str) -> tuple[float, str, dict]:
+        """
+        Investigate a conflicting field in patient data.
+        Returns detailed conflict info if conflict exists.
+        """
+        if not self._patient.conflicting_fields:
+            return -0.05, "No conflicts found in patient data", {"penalty": True}
+        if field not in self._patient.conflicting_fields:
+            return -0.05, f"No conflict for field: {field}", {}
+        conflict = self._patient.conflicting_fields[field]
+        return 0.1, f"Conflict resolved for {field}", {
+            "field": field,
+            "reported_value": conflict["reported"],
+            "alternative_value": conflict["notes_say"],
+            "confidence": conflict["confidence"],
+            "recommendation": "Use reported value unless confidence is low"
+        }
     
     def _action_resolve(self) -> tuple[float, str, bool, dict]:
         """

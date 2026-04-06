@@ -32,7 +32,7 @@ This environment tests whether AI agents can:
 - **Read** complex medical charts (biomarkers, lab trends, comorbidities)
 - **Reason** about inclusion AND exclusion criteria simultaneously
 - **Decide** under uncertainty with life-or-death stakes
-- **Adapt** across 6 increasingly difficult scenarios
+- **Adapt** across 7 increasingly difficult scenarios
 
 ---
 
@@ -59,7 +59,7 @@ curl https://OmilosAISolutions-clinicaltrialmatchenv.hf.space/health
 Verify it works:
 ```bash
 curl http://localhost:7860/tasks | python3 -m json.tool
-# → 6 tasks returned
+# → 7 tasks returned
 ```
 
 ---
@@ -101,7 +101,7 @@ STEP 4 → POST /step {"type": "resolve"}
 
 ---
 
-## 📊 6 Tasks — Easy to Impossible
+## 📊 7 Tasks — Easy to Impossible
 
 | # | Task | Difficulty | What Makes It Hard |
 |---|------|-----------|-------------------|
@@ -111,14 +111,18 @@ STEP 4 → POST /step {"type": "resolve"}
 | 4 | **competing_trials** | 🔴 Expert | 2 eligible trials — must pick the BETTER one |
 | 5 | **contradictory_info** | 🔴 Expert | Patient chart has contradictions — detect before selecting |
 | 6 | **multi_patient** | ⚫ Expert | Match 3 patients simultaneously to different trials |
+| 7 | **logical_inference** | ⚫ Expert | Unknown labs + borderline biomarkers + interaction traps + stale data |
 
-> **Llama-3-70B solves tasks 1-5 but fails multi-patient.** Can your agent do better?
+> **Llama-3-70B solves only 2 of 7 tasks.** Can your agent do better?
 
 ---
 
-## 🎯 5 Actions Your Agent Can Take
+## 🎯 7 Actions Your Agent Can Take
 
 ```json
+// Reveal a patient field value
+{"type": "investigate", "field": "lab_values.creatinine"}
+
 // Check if patient qualifies for a trial
 {"type": "check_criteria", "trial_id": "TRIAL-LUNG-7944"}
 
@@ -128,6 +132,9 @@ STEP 4 → POST /step {"type": "resolve"}
 // Flag contradictory data in patient chart
 {"type": "flag_contradiction", "reason": "lab values inconsistent with stage"}
 
+// Resolve a conflicting field value
+{"type": "investigate_conflict", "field": "stage"}
+
 // Switch to different patient (multi-patient mode)
 {"type": "switch_case", "case_id": "case_2"}
 
@@ -135,15 +142,15 @@ STEP 4 → POST /step {"type": "resolve"}
 {"type": "resolve"}
 ```
 
-**What `check_criteria` returns** (this is what makes the env special):
-- Which **inclusion** rules passed or failed
-- Which **exclusion** rules triggered
-- **Biomarker** expression levels (EGFR/ALK: 0.0–1.0)
-- **Comorbidity** severity conflicts
-- **Prior treatment** matches
-- A **plain English summary**
+**What `check_criteria` returns depends on difficulty:**
+- **Easy tasks:** Full details — which rules passed/failed + plain English summary
+- **Medium tasks:** Boolean flags + a hint
+- **Hard/Expert tasks:** Boolean flags only — agent must investigate and reason
 
-Not just "eligible: true/false" — **the agent gets the reasoning**.
+**Data quality challenges:**
+- Some lab values may be **unknown** (None) — trial matching fails safely
+- Some fields may have **conflicting reports** — use `investigate_conflict` to resolve
+- Patient data may be **stale** (>90 days old)
 
 ---
 
@@ -193,7 +200,7 @@ Not just "eligible: true/false" — **the agent gets the reasoning**.
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/health` | Health check → `{"status": "ok"}` |
-| `GET` | `/tasks` | List all 6 tasks |
+| `GET` | `/tasks` | List all 7 tasks |
 | `POST` | `/reset` | Start episode → patient chart + trials |
 | `POST` | `/step` | Take action → observation + reward |
 | `GET` | `/state` | Current observation (no action taken) |
@@ -240,7 +247,7 @@ python inference.py
 
 **118 tests** covering:
 - ✅ Eligibility engine (inclusion, exclusion, biomarkers, comorbidities)
-- ✅ All 6 graders (task-specific scoring)
+- ✅ All 7 graders (task-specific scoring)
 - ✅ API endpoints (reset, step, tasks, state)
 - ✅ End-to-end episodes for every task
 - ✅ OpenEnv spec compliance
@@ -253,16 +260,17 @@ python inference.py
 
 | Task | Grade | Result | Steps |
 |------|:-----:|:------:|:-----:|
-| single_match | **0.90** | ✅ | 5 |
-| hidden_exclusion | **0.73** | ✅ | 4 |
-| ambiguous_match | **0.54** | ✅ | 17 |
-| competing_trials | **0.65** | ✅ | 3 |
-| contradictory_info | **0.55** | ✅ | 4 |
+| single_match | **0.90** | ✅ | 4 |
+| hidden_exclusion | **0.12** | ❌ | 17 |
+| ambiguous_match | **0.14** | ❌ | 18 |
+| competing_trials | **0.70** | ✅ | 16 |
+| contradictory_info | **0.00** | ❌ | 17 |
 | multi_patient | **0.00** | ❌ | 17 |
+| logical_inference | **0.15** | ❌ | 18 |
 | | | | |
-| **Average** | **0.56** | **5/6** | |
+| **Average** | **0.29** | **2/7** | |
 
-> The hardest task — multi-patient — remains unsolved. **Your move.**
+> Only 2 of 7 tasks solved. Unknown labs, conflicting data, interaction traps, and minimal guidance make this brutally hard. **Your move.**
 
 ---
 
@@ -275,7 +283,7 @@ ClinicalTrialMatchEnv/
 │
 ├── src/
 │   ├── environment.py             → Core environment (reset, step, state)
-│   ├── tasks.py                   → 6 task definitions + seed generators
+│   ├── tasks.py                   → 7 task definitions + seed generators
 │   ├── graders.py                 → Per-task grading (safety-aware)
 │   ├── models.py                  → Action, Observation, Reward schemas
 │   ├── schemas/

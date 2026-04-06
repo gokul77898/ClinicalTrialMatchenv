@@ -124,6 +124,23 @@ class DisallowedCondition(BaseModel):
     min_severity: Literal["mild", "moderate", "severe"] = "mild"
 
 
+class InteractionRule(BaseModel):
+    """Interaction exclusion rule - triggers when TWO conditions are met simultaneously.
+    
+    Example: age > 65 AND creatinine > 1.5 = excluded
+    This catches patients who pass individual checks but fail on combination.
+    """
+    model_config = ConfigDict(extra='forbid')
+    
+    field1: str
+    operator1: Literal[">", "<", ">=", "<=", "==", "!="]
+    value1: Union[int, float, str]
+    field2: str
+    operator2: Literal[">", "<", ">=", "<=", "==", "!="]
+    value2: Union[int, float, str]
+    description: str
+
+
 class ClinicalTrial(BaseModel):
     """
     Strict clinical trial schema for programmatic eligibility.
@@ -140,6 +157,7 @@ class ClinicalTrial(BaseModel):
     exclusion_criteria: list[Rule] = Field(min_length=2)
     required_biomarkers: RequiredBiomarkers
     disallowed_conditions: list[DisallowedCondition] = Field(default_factory=list)
+    interaction_exclusions: list[InteractionRule] = Field(default_factory=list)
     required_prior_treatments: list[str] = Field(default_factory=list)
     forbidden_prior_treatments: list[str] = Field(default_factory=list)
     max_patients: int = Field(default=10, ge=1, le=100)
@@ -317,13 +335,18 @@ def generate_random_trial(seed: int = None) -> ClinicalTrial:
         if random.random() > 0.5:
             pd_l1_req = round(random.uniform(1.0, 50.0), 1)
     
-    # Sometimes add expression thresholds for biomarkers
+    # Add borderline expression thresholds for biomarkers (30% chance)
     egfr_expr_min = None
     alk_expr_min = None
-    if random.random() > 0.6 and egfr_req is True:
-        egfr_expr_min = round(random.uniform(0.5, 0.8), 2)
-    if random.random() > 0.6 and alk_req is True:
-        alk_expr_min = round(random.uniform(0.5, 0.8), 2)
+    if random.random() < 0.3 and egfr_req is True:
+        egfr_expr_min = round(random.uniform(0.45, 0.75), 2)
+    if random.random() < 0.3 and alk_req is True:
+        alk_expr_min = round(random.uniform(0.45, 0.75), 2)
+    
+    # Also add PD_L1 minimum threshold in some cases
+    pd_l1_min = None
+    if random.random() < 0.3 and pd_l1_req is not None:
+        pd_l1_min = round(random.uniform(pd_l1_req * 0.8, pd_l1_req * 1.2), 1)
 
     all_conditions = ["hypertension", "diabetes", "COPD", "heart disease", "kidney disease", "liver disease"]
     num_disallowed = random.randint(0, 3)
@@ -335,6 +358,42 @@ def generate_random_trial(seed: int = None) -> ClinicalTrial:
         )
         for name in disallowed_names
     ]
+    
+    # Add interaction exclusion rules (25% of trials)
+    interaction_exclusions = []
+    INTERACTION_TEMPLATES = [
+        {
+            "field1": "age",
+            "operator1": ">",
+            "value1": 65,
+            "field2": "lab_values.creatinine",
+            "operator2": ">",
+            "value2": 1.4,
+            "description": "Elderly with renal impairment excluded"
+        },
+        {
+            "field1": "age",
+            "operator1": ">",
+            "value1": 70,
+            "field2": "lab_values.wbc",
+            "operator2": "<",
+            "value2": 3500,
+            "description": "Elderly with low WBC excluded"
+        },
+        {
+            "field1": "biomarkers.PD_L1",
+            "operator1": "<",
+            "value1": 10,
+            "field2": "stage",
+            "operator2": "==",
+            "value2": "IV",
+            "description": "Stage IV with low PD-L1 excluded"
+        }
+    ]
+    
+    if random.random() < 0.25:
+        template = random.choice(INTERACTION_TEMPLATES)
+        interaction_exclusions = [InteractionRule(**template)]
     
     # Sometimes add prior treatment requirements
     VALID_TREATMENTS = [
@@ -371,6 +430,7 @@ def generate_random_trial(seed: int = None) -> ClinicalTrial:
             ALK_expression_min=alk_expr_min
         ),
         disallowed_conditions=disallowed,
+        interaction_exclusions=interaction_exclusions,
         required_prior_treatments=required_prior_treatments,
         forbidden_prior_treatments=forbidden_prior_treatments,
         max_patients=max_patients,

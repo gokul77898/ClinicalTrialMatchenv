@@ -46,25 +46,30 @@ api:
 author: ClinicalTrialMatchEnv Team
 baseline_scores:
   ambiguous_match:
-    correct: true
+    correct: false
     model: meta-llama/Meta-Llama-3-70B-Instruct:novita
-    score: 0.54
-    steps: 17
+    score: 0.14
+    steps: 18
   competing_trials:
     correct: true
     model: meta-llama/Meta-Llama-3-70B-Instruct:novita
-    score: 0.65
-    steps: 3
+    score: 0.70
+    steps: 16
   contradictory_info:
-    correct: true
+    correct: false
     model: meta-llama/Meta-Llama-3-70B-Instruct:novita
-    score: 0.55
-    steps: 4
+    score: 0.00
+    steps: 17
   hidden_exclusion:
-    correct: true
+    correct: false
     model: meta-llama/Meta-Llama-3-70B-Instruct:novita
-    score: 0.73
-    steps: 4
+    score: 0.12
+    steps: 17
+  logical_inference:
+    correct: false
+    model: meta-llama/Meta-Llama-3-70B-Instruct:novita
+    score: 0.15
+    steps: 18
   multi_patient:
     correct: false
     model: meta-llama/Meta-Llama-3-70B-Instruct:novita
@@ -73,8 +78,8 @@ baseline_scores:
   single_match:
     correct: true
     model: meta-llama/Meta-Llama-3-70B-Instruct:novita
-    score: 0.9
-    steps: 5
+    score: 0.90
+    steps: 4
 description: 'An OpenEnv environment where an AI agent matches cancer patients to
   clinical trials. The agent reads patient charts with diagnosis, biomarkers, lab
   values and prior treatments, then selects the correct clinical trial from a pool
@@ -90,7 +95,7 @@ environment:
   - hard
   - expert
   max_steps: 20
-  num_tasks: 6
+  num_tasks: 7
   type: sequential
 license: MIT
 name: ClinicalTrialMatchEnv
@@ -184,5 +189,15 @@ tasks:
     '
   difficulty: expert
   id: multi_patient
+  max_score: 1.0
+- baseline_score: 0.15
+  description: 'Patient has unknown lab values, borderline biomarker expression thresholds,
+    interaction exclusion traps, and stale data. Pool of 7 trials. Agent must detect
+    data quality issues, investigate carefully, and reason through multiple complexity
+    layers to find the 1 eligible trial.
+
+    '
+  difficulty: expert
+  id: logical_inference
   max_score: 1.0
 version: 1.0.0

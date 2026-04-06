@@ -344,7 +344,7 @@ class TestPhase3E2E:
         tasks = list_tasks()
         
         print(f"\nTotal tasks: {len(tasks)}")
-        assert len(tasks) == 6, f"Expected 6 tasks, got {len(tasks)}"
+        assert len(tasks) == 7, f"Expected 7 tasks, got {len(tasks)}"
         
         difficulties = [t.difficulty for t in tasks]
         print(f"Difficulties: {difficulties}")

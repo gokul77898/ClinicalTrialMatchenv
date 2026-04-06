@@ -56,7 +56,7 @@ class Action(BaseModel):
     """
     model_config = ConfigDict(extra='forbid')
     
-    type: Literal["investigate", "check_criteria", "select_trial", "resolve", "switch_case", "flag_contradiction"]
+    type: Literal["investigate", "check_criteria", "select_trial", "resolve", "switch_case", "flag_contradiction", "investigate_conflict"]
     field: Optional[str] = None
     trial_id: Optional[str] = None
     case_id: Optional[str] = None
@@ -85,6 +85,9 @@ class Action(BaseModel):
         elif self.type == "flag_contradiction":
             if self.reason is None:
                 raise ValueError("Action type 'flag_contradiction' requires 'reason' parameter")
+        elif self.type == "investigate_conflict":
+            if self.field is None:
+                raise ValueError("Action type 'investigate_conflict' requires 'field' parameter")
         elif self.type == "resolve":
             pass
 

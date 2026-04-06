@@ -43,7 +43,8 @@ TASKS = [
     "ambiguous_match",
     "competing_trials",
     "contradictory_info",
-    "multi_patient"
+    "multi_patient",
+    "logical_inference"
 ]
 
 # -----------------------------------------------
@@ -144,46 +145,71 @@ Select the trial you think matches:
 Flag a contradiction in the patient chart:
 {"type": "flag_contradiction", "reason": "lab values inconsistent with stage"}
 
+Investigate a conflicting field value:
+{"type": "investigate_conflict", "field": "stage"}
+
 Switch to a different patient case (multi-patient mode):
 {"type": "switch_case", "case_id": "case_2"}
 
 End the episode (REQUIRED to finish):
 {"type": "resolve"}
 
-STRATEGY:
-1. Check criteria for each trial
-2. Select the trial where inclusion criteria pass AND exclusion does NOT trigger
-3. Call resolve to finish
+When you call check_criteria, you receive different
+levels of detail based on task difficulty:
 
-When you call check_criteria, you will receive:
-- inclusion_details: exactly which inclusion rules passed/failed
-- exclusion_details: exactly which exclusion rules triggered
-- biomarker_details: which biomarkers match or mismatch (including expression levels)
-- comorbidity_details: severity-aware comorbidity conflicts
-- prior_treatment_details: required/forbidden treatment matches
-- summary: plain English explanation of eligibility
+EASY tasks: Full details including which rules passed/failed
+and a plain-English summary. Use this to select directly.
 
-Patient data also includes:
+MEDIUM tasks: Boolean flags only + a hint. You must
+investigate patient fields to understand WHY a check failed.
+
+HARD/EXPERT tasks: Boolean flags only. No hints.
+You must reason from scratch using patient field values.
+
+Always investigate patient fields BEFORE deciding on hard tasks.
+
+Patient data includes:
 - biomarkers.EGFR_expression / ALK_expression (0.0-1.0 confidence)
-- lab_value_trends: direction (increasing/decreasing/stable) and rate for each lab value
+- lab_value_trends: direction (increasing/decreasing/stable) and rate
 - comorbidities with severity levels (mild/moderate/severe)
 - prior_treatments list
 
-Trials may require:
-- Minimum biomarker expression levels
-- Specific prior treatments (required or forbidden)
-- Comorbidity severity thresholds for disallowed conditions
-
-Trial metadata also includes:
-- max_patients / enrolled_patients / has_capacity: trials at full capacity are ineligible
+Trial metadata:
+- max_patients / enrolled_patients / has_capacity: full trials are ineligible
 - days_until_deadline / is_urgent: urgent trials (<=14 days) need priority
 - trial_score: quality score (0.0-1.0) for comparing eligible trials
+- has_biomarker_requirements: if true, trial requires specific biomarkers
+- has_expression_thresholds: if true, you MUST investigate biomarkers.EGFR_expression
+  and biomarkers.ALK_expression before selecting that trial. The threshold may be
+  borderline — patient value could be just above or just below the minimum required.
+- has_interaction_rules: if true, be careful — this trial may exclude patients based on
+  COMBINATIONS of fields (e.g. age > 65 AND creatinine > 1.4). Investigate multiple
+  fields before deciding.
 
-Additional actions available:
+Additional actions:
 - switch_case: switch active patient in multi-patient mode (requires case_id)
 - flag_contradiction: flag contradictory patient data (requires reason string)
+- investigate_conflict: resolve conflicting field values (requires field name)
 
-Use these details to make better decisions.
+IMPORTANT — DATA QUALITY ISSUES:
+- Some patient lab values may be 'unknown' (lab test not performed).
+  If a trial requires a lab value that is unknown, the patient CANNOT
+  be matched to that trial safely. Always investigate lab values first.
+- Some patients have conflicting field values (e.g. stage reported as III
+  but notes say II). If you see 'conflicting report' when investigating,
+  use investigate_conflict action to get the full details.
+- Patient data_freshness_days shows how old the data is. Stale data
+  (>90 days) may not reflect current patient state.
+
+STRATEGY:
+1. First investigate key patient fields (cancer_type, stage, biomarkers, lab_values)
+2. Check criteria for each trial
+3. If a trial fails, investigate WHY by checking patient fields
+4. If you see 'unknown' or 'conflicting report', handle it before deciding
+5. Select the trial where ALL checks pass
+6. Call resolve to finish
+
+DO NOT guess. Investigate before deciding.
 
 CRITICAL: You MUST call resolve within 20 steps or you score 0.
 CRITICAL: Respond with JSON only. No other text."""
@@ -233,7 +259,7 @@ def build_user_message(observation: dict, step_history: list) -> str:
 
     msg = f"""PATIENT: {patient['age']}yo {patient['gender']}, {patient['cancer_type']}, stage {patient['stage']}
 Biomarkers: EGFR={patient['biomarkers']['EGFR']}, ALK={patient['biomarkers']['ALK']}, PD_L1={patient['biomarkers']['PD_L1']}
-Labs: HB={patient['lab_values']['hb']}, WBC={patient['lab_values']['wbc']}, Creatinine={patient['lab_values']['creatinine']}
+Labs: HB={patient['lab_values']['hb'] if patient['lab_values']['hb'] is not None else 'unknown'}, WBC={patient['lab_values']['wbc'] if patient['lab_values']['wbc'] is not None else 'unknown'}, Creatinine={patient['lab_values']['creatinine'] if patient['lab_values']['creatinine'] is not None else 'unknown'}
 Comorbidities: {patient.get('comorbidities', [])}
 
 TRIALS:
@@ -336,7 +362,8 @@ def get_llm_action(
             valid_types = {
                 "investigate", "check_criteria",
                 "select_trial", "resolve",
-                "flag_contradiction", "switch_case"
+                "flag_contradiction", "switch_case",
+                "investigate_conflict"
             }
             if action["type"] not in valid_types:
                 raise ValueError(
@@ -348,6 +375,8 @@ def get_llm_action(
                 action["field"] = "age"
             if action["type"] == "flag_contradiction" and "reason" not in action:
                 action["reason"] = "chart inconsistency detected"
+            if action["type"] == "investigate_conflict" and "field" not in action:
+                action["field"] = "stage"
             if action["type"] == "switch_case" and "case_id" not in action:
                 action["case_id"] = "case_1"
             if action["type"] in ("check_criteria", "select_trial"):

@@ -71,6 +71,10 @@ def evaluate_rule(patient: Patient, rule: Rule) -> bool:
     patient_value = get_nested_value(patient, rule.field)
     rule_value = rule.value
     
+    # If patient value is None (unknown), rule cannot be evaluated — fail safely
+    if patient_value is None:
+        return False
+    
     patient_type = type(patient_value)
     rule_type = type(rule_value)
     
@@ -181,6 +185,61 @@ def check_exclusion(patient: Patient, trial: ClinicalTrial) -> bool:
     return False
 
 
+def evaluate_single_rule(value: Any, operator: str, threshold: Any) -> bool:
+    """Evaluate a single comparison."""
+    if operator == ">":
+        return value > threshold
+    elif operator == "<":
+        return value < threshold
+    elif operator == ">=":
+        return value >= threshold
+    elif operator == "<=":
+        return value <= threshold
+    elif operator == "==":
+        return value == threshold
+    elif operator == "!=":
+        return value != threshold
+    else:
+        return False
+
+
+def check_interactions(patient: Patient, trial: ClinicalTrial) -> bool:
+    """
+    Check if patient triggers any interaction exclusion rules.
+    
+    Interaction rules exclude based on COMBINATIONS of fields.
+    Example: age > 65 AND creatinine > 1.5 = excluded
+    
+    Args:
+        patient: Patient to evaluate
+        trial: Clinical trial with interaction exclusion rules
+    
+    Returns:
+        True if NO interaction exclusions triggered, False if any triggered
+    """
+    for rule in trial.interaction_exclusions:
+        try:
+            val1 = get_nested_value(patient, rule.field1)
+            val2 = get_nested_value(patient, rule.field2)
+            
+            # If either value is None (unknown), skip this rule
+            if val1 is None or val2 is None:
+                continue
+            
+            # Check if both conditions are met
+            cond1 = evaluate_single_rule(val1, rule.operator1, rule.value1)
+            cond2 = evaluate_single_rule(val2, rule.operator2, rule.value2)
+            
+            if cond1 and cond2:
+                # Both conditions met = interaction exclusion triggered
+                return False
+        except Exception:
+            # If field access fails, skip this rule
+            continue
+    
+    return True
+
+
 def check_biomarkers(patient: Patient, trial: ClinicalTrial) -> bool:
     """
     Check if patient's biomarkers meet trial requirements.
@@ -262,6 +321,17 @@ def evaluate_rule_with_detail(patient: Patient, rule: Rule) -> dict:
     """
     try:
         patient_value = get_nested_value(patient, rule.field)
+        
+        if patient_value is None:
+            return {
+                "field": rule.field,
+                "operator": rule.operator,
+                "value": rule.value,
+                "patient_value": "unknown",
+                "passed": False,
+                "explanation": f"{rule.field} unknown — cannot evaluate ✗"
+            }
+        
         passed = evaluate_rule(patient, rule)
 
         if passed:
@@ -508,6 +578,7 @@ def is_eligible(patient: Patient, trial: ClinicalTrial) -> bool:
     biomarker_pass = check_biomarkers(patient, trial)
     comorbidity_pass = check_comorbidities(patient, trial)
     prior_treatment_pass = check_prior_treatments(patient, trial)
+    interaction_pass = check_interactions(patient, trial)
     
     return (inclusion_pass and not exclusion_triggered and biomarker_pass
-            and comorbidity_pass and prior_treatment_pass)
+            and comorbidity_pass and prior_treatment_pass and interaction_pass)

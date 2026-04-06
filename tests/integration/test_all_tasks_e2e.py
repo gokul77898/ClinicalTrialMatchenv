@@ -26,7 +26,7 @@ def test_all_6_tasks_in_api():
     r = requests.get(f"{BASE_URL}/tasks")
     assert r.status_code == 200
     tasks = r.json()["tasks"]
-    assert len(tasks) == 6
+    assert len(tasks) == 7
     task_ids = [t["task_id"] for t in tasks]
     assert "single_match" in task_ids
     assert "hidden_exclusion" in task_ids

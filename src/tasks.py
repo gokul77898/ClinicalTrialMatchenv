@@ -53,9 +53,9 @@ TASKS = [
             "The 2 wrong trials fail on obvious criteria (wrong cancer type). "
             "Agent should solve in 3-4 steps."
         ),
-        patient_seed=1000,
-        trial_seeds=[2002, 2003, 2004],
-        correct_trial_id="TRIAL-LUNG-7944",
+        patient_seed=1001,
+        trial_seeds=[5100, 5101, 5102],
+        correct_trial_id="TRIAL-COLON-8553",
         num_trials=3
     ),
     TaskDefinition(
@@ -67,9 +67,9 @@ TASKS = [
             "At least 2 trials pass inclusion but fail exclusion (traps). "
             "Agent must carefully check both inclusion AND exclusion criteria."
         ),
-        patient_seed=1002,
-        trial_seeds=[3025, 3026, 3027, 3028, 3029],
-        correct_trial_id="TRIAL-COLON-8437",
+        patient_seed=2003,
+        trial_seeds=[5550, 5551, 5552, 5553, 5554],
+        correct_trial_id="TRIAL-COLON-1267",
         num_trials=5
     ),
     TaskDefinition(
@@ -83,9 +83,9 @@ TASKS = [
             "The correct trial requires biomarker verification. "
             "Agent must investigate biomarkers AND check all criteria carefully."
         ),
-        patient_seed=1012,
-        trial_seeds=[4056, 4057, 4058, 4059, 4060, 4061, 4062],
-        correct_trial_id="TRIAL-COLON-5245",
+        patient_seed=3010,
+        trial_seeds=[8300, 8301, 8302, 8303, 8304, 8305, 8306],
+        correct_trial_id="TRIAL-LUNG-4278",
         num_trials=7
     )
 ]
@@ -102,13 +102,13 @@ EXTENDED_TASKS: list[TaskDefinition] = [
             "Trials shared across patients. Each patient eligible for exactly 1 different trial. "
             "Agent must manage multiple patient contexts at once."
         ),
-        patient_seed=2011,
+        patient_seed=2001,
         trial_seeds=[5000, 5001, 5002, 5003, 5004],
         correct_trial_id="",
         num_trials=5,
         mode="multi",
-        patient_seeds=[2011, 2020, 2026],
-        correct_trial_ids=["TRIAL-LUNG-4570", "TRIAL-COLON-7254", "TRIAL-COLON-1441"]
+        patient_seeds=[2001, 2008, 2015],
+        correct_trial_ids=["TRIAL-LUNG-4523", "TRIAL-COLON-6256", "TRIAL-BREAST-9857"]
     ),
     TaskDefinition(
         task_id="competing_trials",
@@ -119,9 +119,9 @@ EXTENDED_TASKS: list[TaskDefinition] = [
             "Agent must compare trial_score values and pick the highest-scoring eligible trial. "
             "Requires checking eligibility AND comparing quality scores."
         ),
-        patient_seed=3041,
-        trial_seeds=[6001, 6002, 6003, 6004, 6005],
-        correct_trial_id="TRIAL-LUNG-4295",
+        patient_seed=3501,
+        trial_seeds=[6450, 6451, 6452, 6453, 6454],
+        correct_trial_id="TRIAL-LUNG-3165",
         num_trials=5,
     ),
     TaskDefinition(
@@ -135,9 +135,25 @@ EXTENDED_TASKS: list[TaskDefinition] = [
             "Tests the agent's ability to detect data quality issues."
         ),
         patient_seed=4000,
-        trial_seeds=[7040, 7041, 7042, 7043, 7044],
-        correct_trial_id="TRIAL-COLON-5953",
+        trial_seeds=[5250, 5251, 5252, 5253, 5254],
+        correct_trial_id="TRIAL-BREAST-8060",
         num_trials=5,
+    ),
+    TaskDefinition(
+        task_id="logical_inference",
+        name="Logical Inference (Brutal)",
+        difficulty="expert",
+        description=(
+            "Patient has unknown creatinine lab value, a borderline EGFR expression "
+            "threshold on the correct trial, interaction exclusion traps, and stale "
+            "data (>90 days). Pool of 7 trials. Exactly 1 correct. Agent must detect "
+            "unknown lab values, check borderline biomarker expression, identify "
+            "interaction traps, and only then correctly identify the 1 eligible trial."
+        ),
+        patient_seed=9002,
+        trial_seeds=[8750, 8751, 8752, 8753, 8754, 8755, 8756],
+        correct_trial_id="TRIAL-COLON-7462",
+        num_trials=7,
     ),
 ]
 

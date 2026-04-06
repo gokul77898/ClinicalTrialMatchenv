@@ -148,16 +148,17 @@ class TestAPI:
         assert r.status_code == 200
         data = r.json()
         assert "tasks" in data
-        assert len(data["tasks"]) == 6
+        assert len(data["tasks"]) == 7
         task_ids = [t["task_id"] for t in data["tasks"]]
         # Original 3 tasks
         assert "single_match" in task_ids
         assert "hidden_exclusion" in task_ids
         assert "ambiguous_match" in task_ids
-        # Extended 3 tasks
+        # Extended 4 tasks
         assert "multi_patient" in task_ids
         assert "competing_trials" in task_ids
         assert "contradictory_info" in task_ids
+        assert "logical_inference" in task_ids
 
         print(f"  Status: {r.status_code}")
         print(f"  Tasks: {task_ids}")
@@ -173,10 +174,10 @@ class TestAPI:
                       json={"task_id": "single_match"})
         requests.post(f"{BASE_URL}/step",
                       json={"type": "check_criteria",
-                            "trial_id": "TRIAL-LUNG-7944"})
+                            "trial_id": "TRIAL-COLON-8553"})
         requests.post(f"{BASE_URL}/step",
                       json={"type": "select_trial",
-                            "trial_id": "TRIAL-LUNG-7944"})
+                            "trial_id": "TRIAL-COLON-8553"})
         r = requests.post(f"{BASE_URL}/step",
                           json={"type": "resolve"})
         assert r.status_code == 200
