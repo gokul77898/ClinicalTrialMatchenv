@@ -71,9 +71,10 @@ def grade_single_match(episode: EpisodeHistory) -> float:
     else:
         efficiency_score = 0.0
     
-    # Final score
+    # Final score - MUST be strictly in (0, 1), not 0.0 or 1.0
     raw = selection_score + criteria_score + efficiency_score
-    return round(min(1.0, max(0.0, raw)), 4)
+    clamped = max(0.01, min(0.99, raw))
+    return round(clamped, 4)
 
 
 def grade_hidden_exclusion(episode: EpisodeHistory) -> float:
@@ -130,9 +131,10 @@ def grade_hidden_exclusion(episode: EpisodeHistory) -> float:
     else:
         efficiency_score = 0.0
     
-    # Final score
+    # Final score - MUST be strictly in (0, 1), not 0.0 or 1.0
     raw = selection_score + coverage_score + investigation_score + efficiency_score
-    return round(min(1.0, max(0.0, raw)), 4)
+    clamped = max(0.01, min(0.99, raw))
+    return round(clamped, 4)
 
 
 def grade_ambiguous_match(episode: EpisodeHistory) -> float:
@@ -197,9 +199,10 @@ def grade_ambiguous_match(episode: EpisodeHistory) -> float:
     else:
         efficiency_score = 0.0
     
-    # Final score
+    # Final score - MUST be strictly in (0, 1), not 0.0 or 1.0
     raw = selection_score + biomarker_score + coverage_score + lab_score + efficiency_score
-    return round(min(1.0, max(0.0, raw)), 4)
+    clamped = max(0.01, min(0.99, raw))
+    return round(clamped, 4)
 
 
 def grade_multi_patient(episode: EpisodeHistory) -> float:
@@ -258,7 +261,8 @@ def grade_multi_patient(episode: EpisodeHistory) -> float:
         efficiency_score = 0.0
     
     raw = case_score + efficiency_score
-    return round(min(1.0, max(0.0, raw)), 4)
+    clamped = max(0.01, min(0.99, raw))
+    return round(clamped, 4)
 
 
 def grade_competing_trials(episode: EpisodeHistory) -> float:
@@ -318,7 +322,8 @@ def grade_competing_trials(episode: EpisodeHistory) -> float:
         efficiency_score = 0.0
     
     raw = selection_score + coverage_score + investigation_score + efficiency_score
-    return round(min(1.0, max(0.0, raw)), 4)
+    clamped = max(0.01, min(0.99, raw))
+    return round(clamped, 4)
 
 
 def grade_contradictory_info(episode: EpisodeHistory) -> float:
@@ -377,7 +382,8 @@ def grade_contradictory_info(episode: EpisodeHistory) -> float:
         efficiency_score = 0.0
     
     raw = selection_score + flag_score + investigation_score + efficiency_score
-    return round(min(1.0, max(0.0, raw)), 4)
+    clamped = max(0.01, min(0.99, raw))
+    return round(clamped, 4)
 
 
 def grade_logical_inference(episode: EpisodeHistory) -> float:
@@ -436,7 +442,8 @@ def grade_logical_inference(episode: EpisodeHistory) -> float:
         process_score += 0.15
     
     raw = selection_score + process_score
-    return round(min(1.0, max(0.0, raw)), 4)
+    clamped = max(0.01, min(0.99, raw))
+    return round(clamped, 4)
 
 
 def grade_task(task_id: str, episode: EpisodeHistory) -> float:

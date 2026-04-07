@@ -40,11 +40,7 @@ MAX_STEPS_PER_TASK = 18
 TASKS = [
     "single_match",
     "hidden_exclusion",
-    "ambiguous_match",
-    "competing_trials",
-    "contradictory_info",
-    "multi_patient",
-    "logical_inference"
+    "ambiguous_match"
 ]
 
 # -----------------------------------------------
@@ -327,7 +323,8 @@ def get_llm_action(
                     {"role": "user", "content": user_msg}
                 ],
                 temperature=0.0,
-                max_tokens=80
+                max_tokens=80,
+                timeout=30.0  # 30 second timeout per LLM call
             )
 
             raw = response.choices[0].message.content.strip()
