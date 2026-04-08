@@ -119,7 +119,7 @@ EXTENDED_TASKS: list[TaskDefinition] = [
             "Agent must compare trial_score values and pick the highest-scoring eligible trial. "
             "Requires checking eligibility AND comparing quality scores."
         ),
-        patient_seed=3501,
+        patient_seed=3502,
         trial_seeds=[6450, 6451, 6452, 6453, 6454],
         correct_trial_id="TRIAL-LUNG-3165",
         num_trials=5,
@@ -134,9 +134,9 @@ EXTENDED_TASKS: list[TaskDefinition] = [
             "then still select the correct eligible trial. "
             "Tests the agent's ability to detect data quality issues."
         ),
-        patient_seed=4000,
-        trial_seeds=[5250, 5251, 5252, 5253, 5254],
-        correct_trial_id="TRIAL-BREAST-8060",
+        patient_seed=4001,
+        trial_seeds=[5210, 5211, 5212, 5213, 5214],
+        correct_trial_id="TRIAL-LUNG-9697",
         num_trials=5,
     ),
     TaskDefinition(
@@ -150,9 +150,9 @@ EXTENDED_TASKS: list[TaskDefinition] = [
             "unknown lab values, check borderline biomarker expression, identify "
             "interaction traps, and only then correctly identify the 1 eligible trial."
         ),
-        patient_seed=9002,
-        trial_seeds=[8750, 8751, 8752, 8753, 8754, 8755, 8756],
-        correct_trial_id="TRIAL-COLON-7462",
+        patient_seed=4500,
+        trial_seeds=[7000, 7001, 7002, 7003, 7004, 7005, 7006],
+        correct_trial_id="TRIAL-BREAST-8368",
         num_trials=7,
     ),
 ]
