@@ -174,10 +174,10 @@ class TestAPI:
                       json={"task_id": "single_match"})
         requests.post(f"{BASE_URL}/step",
                       json={"type": "check_criteria",
-                            "trial_id": "TRIAL-COLON-8553"})
+                            "trial_id": "TRIAL-COLON-8837"})
         requests.post(f"{BASE_URL}/step",
                       json={"type": "select_trial",
-                            "trial_id": "TRIAL-COLON-8553"})
+                            "trial_id": "TRIAL-COLON-8837"})
         r = requests.post(f"{BASE_URL}/step",
                           json={"type": "resolve"})
         assert r.status_code == 200

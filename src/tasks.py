@@ -54,8 +54,8 @@ TASKS = [
             "Agent should solve in 3-4 steps."
         ),
         patient_seed=1001,
-        trial_seeds=[5100, 5101, 5102],
-        correct_trial_id="TRIAL-COLON-8553",
+        trial_seeds=[5040, 5041, 5042],
+        correct_trial_id="TRIAL-COLON-8837",
         num_trials=3
     ),
     TaskDefinition(
@@ -67,9 +67,9 @@ TASKS = [
             "At least 2 trials pass inclusion but fail exclusion (traps). "
             "Agent must carefully check both inclusion AND exclusion criteria."
         ),
-        patient_seed=2003,
-        trial_seeds=[5550, 5551, 5552, 5553, 5554],
-        correct_trial_id="TRIAL-COLON-1267",
+        patient_seed=2012,
+        trial_seeds=[5510, 5511, 5512, 5513, 5514],
+        correct_trial_id="TRIAL-BREAST-2843",
         num_trials=5
     ),
     TaskDefinition(
@@ -83,9 +83,9 @@ TASKS = [
             "The correct trial requires biomarker verification. "
             "Agent must investigate biomarkers AND check all criteria carefully."
         ),
-        patient_seed=3010,
-        trial_seeds=[8300, 8301, 8302, 8303, 8304, 8305, 8306],
-        correct_trial_id="TRIAL-LUNG-4278",
+        patient_seed=3015,
+        trial_seeds=[8350, 8351, 8352, 8353, 8354, 8355, 8356],
+        correct_trial_id="TRIAL-BREAST-6048",
         num_trials=7
     )
 ]
