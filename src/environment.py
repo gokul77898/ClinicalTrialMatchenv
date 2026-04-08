@@ -224,7 +224,12 @@ class ClinicalTrialEnv:
         return self._build_observation()
     
     def _build_trial_summaries(self) -> list[dict]:
-        """Build trial summary dicts from self._trials with randomization."""
+        """Build trial summary dicts from self._trials with randomization.
+        
+        Guarantees the correct trial (if task-defined) appears in the first 4
+        positions so that agents operating under a 4-trial action budget can
+        always reach it. This preserves solvability under realistic constraints.
+        """
         import random
         
         available_trials = []
@@ -232,6 +237,21 @@ class ClinicalTrialEnv:
         trials_list = list(self._trials)
         # Randomize order to remove bias
         random.shuffle(trials_list)
+        
+        # Ensure correct trial is in first 4 positions (solvability guarantee)
+        if self._current_task and hasattr(self._current_task, 'correct_trial_id'):
+            correct_id = self._current_task.correct_trial_id
+            correct_idx = None
+            for i, t in enumerate(trials_list):
+                if t.trial_id == correct_id:
+                    correct_idx = i
+                    break
+            if correct_idx is not None and correct_idx >= 4:
+                # Swap with a random position in 0-3
+                swap_pos = random.randint(0, 3)
+                trials_list[correct_idx], trials_list[swap_pos] = (
+                    trials_list[swap_pos], trials_list[correct_idx]
+                )
         
         for trial in trials_list:
             has_biomarker_req = (

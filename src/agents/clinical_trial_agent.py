@@ -39,13 +39,14 @@ class ClinicalTrialAgent:
             task_id: Optional task ID to reset with
             
         Returns:
-            Dict with episode results
+            Dict with episode results including reasoning trace
         """
-        # Reset memory
+        # Reset memory and reasoning
         self.investigated_fields = set()
         self.checked_trials = set()
         self.selected_trial = None
         self.episode_steps = 0
+        reasoning_trace = []
         
         if task_id:
             obs = env.reset(task_id=task_id)
@@ -54,6 +55,7 @@ class ClinicalTrialAgent:
         
         # STEP 1: Smarter investigation
         self._investigate_smart(env, obs)
+        reasoning_trace.append(f"Investigated fields: {', '.join(self.investigated_fields)}")
         
         # STEP 2: Get matching trials
         obs = env.state()
@@ -62,11 +64,23 @@ class ClinicalTrialAgent:
             if trial["cancer_type"] == obs.patient.cancer_type:
                 matching_trials.append(trial["trial_id"])
         
-        # STEP 3: Score and evaluate trials (max 3)
+        reasoning_trace.append(f"Filtered {len(matching_trials)} trials matching {obs.patient.cancer_type}")
+        
+        # STEP 3: Score and evaluate trials (max 4)
         trial_scores = self._evaluate_and_score_trials(env, matching_trials, obs)
+        
+        # Add reasoning for evaluated trials
+        for trial_id, score in trial_scores.items():
+            reasoning_trace.append(f"Evaluated {trial_id}: score {score:.1f}")
         
         # STEP 4: Select best trial by score
         selected_trial = self._select_best_trial(trial_scores, obs, env)
+        
+        if trial_scores:
+            best_score = trial_scores.get(selected_trial, 0)
+            reasoning_trace.append(f"Selected {selected_trial} with highest score ({best_score:.1f})")
+        else:
+            reasoning_trace.append(f"Selected {selected_trial} as fallback (no scored trials)")
         
         # STEP 5: Resolve
         final_obs, reward, done, info = env.step(Action(type="resolve"))
@@ -76,7 +90,8 @@ class ClinicalTrialAgent:
             "selected_trial": self.selected_trial,
             "reward": reward.value,
             "steps": self.episode_steps,
-            "success": info.get("correct", False)
+            "success": info.get("correct", False),
+            "reasoning": reasoning_trace
         }
     
     def _investigate_smart(self, env: ClinicalTrialEnv, obs: Observation) -> None:
@@ -396,5 +411,50 @@ def random_agent(env: ClinicalTrialEnv) -> Dict:
         "selected_trial": random_trial if obs.available_trials else "none",
         "reward": reward.value,
         "steps": 2,  # select + resolve
+        "success": info.get("correct", False)
+    }
+
+
+def greedy_agent(env: ClinicalTrialEnv, task_id: str = None) -> Dict:
+    """
+    Greedy baseline agent - picks first trial with inclusion_pass.
+    
+    Args:
+        env: ClinicalTrial environment
+        task_id: Optional task ID for deterministic episodes
+        
+    Returns:
+        Dict with episode results
+    """
+    obs = env.reset(task_id=task_id)
+    selected_trial = None
+    steps = 1  # reset step
+    
+    # Check each trial until find one with inclusion_pass
+    for trial in obs.available_trials:
+        obs, reward, done, info = env.step(Action(type="check_criteria", trial_id=trial["trial_id"]))
+        steps += 1
+        
+        if info.get("inclusion_pass", False) and not info.get("exclusion_triggered", False):
+            selected_trial = trial["trial_id"]
+            break
+    
+    # Select first trial with inclusion_pass, or fallback to first available
+    if selected_trial:
+        env.step(Action(type="select_trial", trial_id=selected_trial))
+        steps += 1
+    elif obs.available_trials:
+        selected_trial = obs.available_trials[0]["trial_id"]
+        env.step(Action(type="select_trial", trial_id=selected_trial))
+        steps += 1
+    
+    # Resolve
+    final_obs, reward, done, info = env.step(Action(type="resolve"))
+    steps += 1
+    
+    return {
+        "selected_trial": selected_trial or "none",
+        "reward": reward.value,
+        "steps": steps,
         "success": info.get("correct", False)
     }

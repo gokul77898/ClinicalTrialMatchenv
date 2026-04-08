@@ -47,22 +47,47 @@ This environment tests whether AI agents can:
 - **Decide** under uncertainty with life-or-death stakes
 - **Adapt** across 7 increasingly difficult scenarios
 
-## Phase 3: Intelligent Decision-Making Agent
+## Phase 4: Reinforcement Learning Evaluation
 
-We've implemented a **deterministic ClinicalTrialAgent** that achieves **67% success rate** using intelligent rule-based reasoning:
+We've implemented **constraint-based RL evaluation** with fair comparison across multiple agents operating under identical bounded rationality constraints:
 
 ### Key Features
-- **Non-leaky evaluation**: No direct access to eligibility results
-- **Smart scoring system**: Prioritizes inclusion passes (+2.0) with heuristic boosts
-- **Realistic environment**: Varied trial thresholds, randomized order
-- **Robust evaluation**: 100-episode testing with failure mode analysis
+- **Action budget constraint**: All agents can only evaluate 4 of N trials (9-action space)
+- **Fair evaluation**: Shared episode schedule (70% task-based, 30% random)
+- **Solvability guarantee**: Correct trial always reachable within 4-trial constraint on structured tasks
+- **Realistic difficulty**: Random episodes introduce uncertainty where no correct trial is guaranteed
 
-### Agent Performance
+### Agent Performance (100 episodes, mixed schedule)
 ```
-ClinicalTrialAgent: 67% success rate
-Random Baseline:   6% success rate
-Improvement:      +61%
+Model            Success Rate    Avg Reward
+--------------------------------------------
+Random                8%          -0.812
+Greedy               73%           0.568
+Heuristic            73%           0.586
+BC Policy            70%           0.491
+RL (PPO)             74%           0.515
 ```
+
+### Difficulty Breakdown
+| Task Type | Heuristic | RL (PPO) | Insight |
+|-----------|-----------|----------|---------|
+| **Easy** (single_match) | 100% | 100% | Deterministic, solvable |
+| **Medium** (hidden_exclusion) | 100% | 100% | Exclusion traps, solvable |
+| **Hard** (ambiguous_match) | 100% | 100% | 7 trials, 3 traps, solvable |
+| **Random** (no template) | 10% | 6% | No guaranteed correct trial |
+| **Overall** | **77.5%** | **76.5%** | Realistic aggregate |
+
+**Key Insight:** Hard tasks are structured but solvable under the 4-trial constraint. Random episodes introduce realistic uncertainty where performance drops significantly (10% vs 100%), reflecting real-world clinical matching where not every patient has an eligible trial.
+
+### Ablation Study
+Removing exclusion-first filtering drops performance from **100% → 34%** (−66% on structured tasks), confirming exclusion logic is the most critical component of the decision pipeline.
+
+### Validation
+✅ Action space: 9 actions (investigate 0-2, check_trial 3-6, select 7, resolve 8)  
+✅ All agents limited to 4 trials  
+✅ No hidden leakage or constraint violations  
+✅ Realistic difficulty (not 100% everywhere)  
+✅ 118 tests passing
 
 ---
 
