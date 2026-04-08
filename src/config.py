@@ -9,6 +9,8 @@ Only ONE mode can be active at a time.
 """
 
 # MODE SELECTION
+# NOTE: Tasks were designed with REALISTIC_MODE
+# Use STRICT_MODE only for Phase 1 spec compliance testing
 STRICT_MODE = False
 REALISTIC_MODE = True
 
@@ -41,6 +43,11 @@ def get_active_mode() -> str:
     else:
         raise ValueError("No mode is active")
 
+
+# Grader score clamping (for hackathon submission only)
+# Set to True for hackathon (scores must be in (0,1) not [0,1])
+# Set to False for internal testing (allows exact 0.0 and 1.0)
+CLAMP_SCORES_FOR_HACKATHON = False
 
 # Mode-specific settings
 if STRICT_MODE:

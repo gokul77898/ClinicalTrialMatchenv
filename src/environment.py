@@ -344,9 +344,9 @@ class ClinicalTrialEnv:
             if value is None:
                 return 0.0, f"Field '{field}' = unknown (lab test not performed)", {"value": "unknown"}
             
-            # Check if this field has a conflict
+            # Check if this field has a conflict (REALISTIC_MODE only)
             field_base = field.split(".")[-1] if "." in field else field
-            if field_base in self._patient.conflicting_fields:
+            if hasattr(self._patient, 'conflicting_fields') and field_base in self._patient.conflicting_fields:
                 conflict = self._patient.conflicting_fields[field_base]
                 return 0.0, (
                     f"Field '{field}' = {value} "
@@ -509,7 +509,8 @@ class ClinicalTrialEnv:
         Investigate a conflicting field in patient data.
         Returns detailed conflict info if conflict exists.
         """
-        if not self._patient.conflicting_fields:
+        # STRICT_MODE: No conflicting_fields attribute
+        if not hasattr(self._patient, 'conflicting_fields') or not self._patient.conflicting_fields:
             return -0.05, "No conflicts found in patient data", {"penalty": True}
         if field not in self._patient.conflicting_fields:
             return -0.05, f"No conflict for field: {field}", {}

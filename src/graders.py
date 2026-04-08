@@ -8,6 +8,8 @@ All graders are deterministic - same input always produces same output.
 from dataclasses import dataclass
 from typing import Optional
 
+from src.config import CLAMP_SCORES_FOR_HACKATHON
+
 
 @dataclass
 class EpisodeHistory:
@@ -71,9 +73,14 @@ def grade_single_match(episode: EpisodeHistory) -> float:
     else:
         efficiency_score = 0.0
     
-    # Final score - MUST be strictly in (0, 1), not 0.0 or 1.0
+    # Final score
     raw = selection_score + criteria_score + efficiency_score
-    clamped = max(0.01, min(0.99, raw))
+    if CLAMP_SCORES_FOR_HACKATHON:
+        # Hackathon requires scores in (0, 1) - not 0.0 or 1.0
+        clamped = max(0.01, min(0.99, raw))
+    else:
+        # Internal testing allows [0, 1]
+        clamped = max(0.0, min(1.0, raw))
     return round(clamped, 4)
 
 
@@ -131,9 +138,12 @@ def grade_hidden_exclusion(episode: EpisodeHistory) -> float:
     else:
         efficiency_score = 0.0
     
-    # Final score - MUST be strictly in (0, 1), not 0.0 or 1.0
+    # Final score
     raw = selection_score + coverage_score + investigation_score + efficiency_score
-    clamped = max(0.01, min(0.99, raw))
+    if CLAMP_SCORES_FOR_HACKATHON:
+        clamped = max(0.01, min(0.99, raw))
+    else:
+        clamped = max(0.0, min(1.0, raw))
     return round(clamped, 4)
 
 
@@ -199,9 +209,12 @@ def grade_ambiguous_match(episode: EpisodeHistory) -> float:
     else:
         efficiency_score = 0.0
     
-    # Final score - MUST be strictly in (0, 1), not 0.0 or 1.0
+    # Final score
     raw = selection_score + biomarker_score + coverage_score + lab_score + efficiency_score
-    clamped = max(0.01, min(0.99, raw))
+    if CLAMP_SCORES_FOR_HACKATHON:
+        clamped = max(0.01, min(0.99, raw))
+    else:
+        clamped = max(0.0, min(1.0, raw))
     return round(clamped, 4)
 
 
@@ -261,7 +274,10 @@ def grade_multi_patient(episode: EpisodeHistory) -> float:
         efficiency_score = 0.0
     
     raw = case_score + efficiency_score
-    clamped = max(0.01, min(0.99, raw))
+    if CLAMP_SCORES_FOR_HACKATHON:
+        clamped = max(0.01, min(0.99, raw))
+    else:
+        clamped = max(0.0, min(1.0, raw))
     return round(clamped, 4)
 
 
@@ -322,7 +338,10 @@ def grade_competing_trials(episode: EpisodeHistory) -> float:
         efficiency_score = 0.0
     
     raw = selection_score + coverage_score + investigation_score + efficiency_score
-    clamped = max(0.01, min(0.99, raw))
+    if CLAMP_SCORES_FOR_HACKATHON:
+        clamped = max(0.01, min(0.99, raw))
+    else:
+        clamped = max(0.0, min(1.0, raw))
     return round(clamped, 4)
 
 
@@ -382,7 +401,10 @@ def grade_contradictory_info(episode: EpisodeHistory) -> float:
         efficiency_score = 0.0
     
     raw = selection_score + flag_score + investigation_score + efficiency_score
-    clamped = max(0.01, min(0.99, raw))
+    if CLAMP_SCORES_FOR_HACKATHON:
+        clamped = max(0.01, min(0.99, raw))
+    else:
+        clamped = max(0.0, min(1.0, raw))
     return round(clamped, 4)
 
 
@@ -442,7 +464,10 @@ def grade_logical_inference(episode: EpisodeHistory) -> float:
         process_score += 0.15
     
     raw = selection_score + process_score
-    clamped = max(0.01, min(0.99, raw))
+    if CLAMP_SCORES_FOR_HACKATHON:
+        clamped = max(0.01, min(0.99, raw))
+    else:
+        clamped = max(0.0, min(1.0, raw))
     return round(clamped, 4)
 
 

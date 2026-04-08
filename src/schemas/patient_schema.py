@@ -188,31 +188,38 @@ def generate_random_patient(seed: int = None) -> Patient:
     else:
         alk_expression = round(random.uniform(0.0, 0.4), 3)
 
-    # Lab values - mode-dependent
+    # Lab values - CRITICAL: Must consume same random calls in both modes for determinism
+    # Always generate the random checks and values, then decide whether to use None
+    hb_missing_check = random.random()
+    hb_generated = round(random.uniform(8.0, 16.0), 2)
+    
+    wbc_missing_check = random.random()
+    wbc_generated = round(random.uniform(3000, 15000), 2)
+    
+    creatinine_missing_check = random.random()
+    creatinine_generated = round(random.uniform(0.5, 2.5), 2)
+    
     if STRICT_MODE:
-        # STRICT_MODE: All lab values MUST be present (no None)
-        hb_val = round(random.uniform(8.0, 16.0), 2)
-        wbc_val = round(random.uniform(3000, 15000), 2)
-        creatinine_val = round(random.uniform(0.5, 2.5), 2)
+        # STRICT_MODE: All lab values MUST be present (ignore missing checks)
+        hb_val = hb_generated
+        wbc_val = wbc_generated
+        creatinine_val = creatinine_generated
     elif REALISTIC_MODE:
-        # REALISTIC_MODE: 15% chance of missing lab values
+        # REALISTIC_MODE: Use missing checks to determine None
         from src.config import MISSING_LAB_VALUE_PROBABILITY
-        hb_val = None if random.random() < MISSING_LAB_VALUE_PROBABILITY else round(
-            random.uniform(8.0, 16.0), 2
-        )
-        wbc_val = None if random.random() < MISSING_LAB_VALUE_PROBABILITY else round(
-            random.uniform(3000, 15000), 2
-        )
-        creatinine_val = None if random.random() < MISSING_LAB_VALUE_PROBABILITY else round(
-            random.uniform(0.5, 2.5), 2
-        )
+        hb_val = None if hb_missing_check < MISSING_LAB_VALUE_PROBABILITY else hb_generated
+        wbc_val = None if wbc_missing_check < MISSING_LAB_VALUE_PROBABILITY else wbc_generated
+        creatinine_val = None if creatinine_missing_check < MISSING_LAB_VALUE_PROBABILITY else creatinine_generated
 
     patient_stage = random.choice(["I", "II", "III", "IV"])
 
-    # Conflicting fields - only in REALISTIC_MODE
+    # Conflicting fields - CRITICAL: Must consume same random calls in both modes
+    conflict_check = random.random()
+    freshness_days_generated = random.randint(0, 180)
+    
     if REALISTIC_MODE and ALLOW_CONFLICTING_FIELDS:
         from src.config import CONFLICTING_FIELD_PROBABILITY
-        if random.random() < CONFLICTING_FIELD_PROBABILITY:
+        if conflict_check < CONFLICTING_FIELD_PROBABILITY:
             conflicting_fields = {
                 "stage": {
                     "reported": patient_stage,
@@ -222,8 +229,9 @@ def generate_random_patient(seed: int = None) -> Patient:
             }
         else:
             conflicting_fields = {}
-        data_freshness_days = random.randint(0, 180)
+        data_freshness_days = freshness_days_generated
     else:
+        # STRICT_MODE: No conflicts, but still consumed random calls above
         conflicting_fields = {}
         data_freshness_days = 0
 
