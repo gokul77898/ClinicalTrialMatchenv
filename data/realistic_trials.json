@@ -1,0 +1,112 @@
+[
+  {
+    "trial_id": "REAL-LUNG-001",
+    "cancer_type": "lung cancer",
+    "inclusion": [
+      {"field": "age", "operator": ">=", "value": 18},
+      {"field": "age", "operator": "<=", "value": 75},
+      {"field": "biomarkers.PD_L1", "operator": ">=", "value": 50},
+      {"field": "lab_values.hb", "operator": ">=", "value": 10.0}
+    ],
+    "exclusion": [
+      {"field": "lab_values.creatinine", "operator": ">", "value": 2.0},
+      {"field": "stage", "operator": "==", "value": "IV"}
+    ]
+  },
+  {
+    "trial_id": "REAL-BREAST-001",
+    "cancer_type": "breast cancer",
+    "inclusion": [
+      {"field": "age", "operator": ">=", "value": 21},
+      {"field": "age", "operator": "<=", "value": 80},
+      {"field": "biomarkers.ER", "operator": "==", "value": true},
+      {"field": "lab_values.wbc", "operator": ">=", "value": 3000}
+    ],
+    "exclusion": [
+      {"field": "lab_values.hb", "operator": "<", "value": 9.0},
+      {"field": "biomarkers.HER2", "operator": "==", "value": true}
+    ]
+  },
+  {
+    "trial_id": "REAL-COLON-001",
+    "cancer_type": "colon cancer",
+    "inclusion": [
+      {"field": "age", "operator": ">=", "value": 18},
+      {"field": "age", "operator": "<=", "value": 70},
+      {"field": "lab_values.creatinine", "operator": "<=", "value": 1.8},
+      {"field": "stage", "operator": "!=", "value": "IV"}
+    ],
+    "exclusion": [
+      {"field": "lab_values.wbc", "operator": "<", "value": 2500},
+      {"field": "biomarkers.KRAS", "operator": "==", "value": true}
+    ]
+  },
+  {
+    "trial_id": "REAL-LUNG-002",
+    "cancer_type": "lung cancer",
+    "inclusion": [
+      {"field": "age", "operator": ">=", "value": 19},
+      {"field": "biomarkers.EGFR", "operator": "==", "value": true},
+      {"field": "lab_values.hb", "operator": ">=", "value": 9.5}
+    ],
+    "exclusion": [
+      {"field": "lab_values.creatinine", "operator": ">", "value": 1.5},
+      {"field": "stage", "operator": "==", "value": "IV"}
+    ]
+  },
+  {
+    "trial_id": "REAL-BREAST-002",
+    "cancer_type": "breast cancer",
+    "inclusion": [
+      {"field": "age", "operator": ">=", "value": 18},
+      {"field": "age", "operator": "<=", "value": 65},
+      {"field": "biomarkers.PR", "operator": "==", "value": true},
+      {"field": "lab_values.creatinine", "operator": "<=", "value": 2.2}
+    ],
+    "exclusion": [
+      {"field": "lab_values.hb", "operator": "<", "value": 8.5},
+      {"field": "stage", "operator": "==", "value": "III"}
+    ]
+  },
+  {
+    "trial_id": "REAL-COLON-002",
+    "cancer_type": "colon cancer",
+    "inclusion": [
+      {"field": "age", "operator": ">=", "value": 23},
+      {"field": "age", "operator": "<=", "value": 75},
+      {"field": "lab_values.wbc", "operator": ">=", "value": 3500},
+      {"field": "lab_values.hb", "operator": ">=", "value": 11.0}
+    ],
+    "exclusion": [
+      {"field": "lab_values.creatinine", "operator": ">", "value": 2.5},
+      {"field": "stage", "operator": "==", "value": "IV"}
+    ]
+  },
+  {
+    "trial_id": "REAL-LUNG-003",
+    "cancer_type": "lung cancer",
+    "inclusion": [
+      {"field": "age", "operator": ">=", "value": 21},
+      {"field": "age", "operator": "<=", "value": 85},
+      {"field": "biomarkers.ALK", "operator": "==", "value": true}
+    ],
+    "exclusion": [
+      {"field": "lab_values.hb", "operator": "<", "value": 10.0},
+      {"field": "lab_values.wbc", "operator": ">", "value": 12000}
+    ]
+  },
+  {
+    "trial_id": "REAL-BREAST-003",
+    "cancer_type": "breast cancer",
+    "inclusion": [
+      {"field": "age", "operator": ">=", "value": 18},
+      {"field": "age", "operator": "<=", "value": 70},
+      {"field": "biomarkers.HER2", "operator": "==", "value": true},
+      {"field": "lab_values.creatinine", "operator": "<=", "value": 1.6}
+    ],
+    "exclusion": [
+      {"field": "lab_values.wbc", "operator": "<", "value": 2000},
+      {"field": "stage", "operator": "==", "value": "IV"}
+    ]
+  }
+]

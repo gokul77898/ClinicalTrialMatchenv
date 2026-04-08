@@ -210,14 +210,14 @@ def generate_random_trial(seed: int = None) -> ClinicalTrial:
     
     inclusion_rules = []
     
-    min_age = random.choice([18, 21])
+    min_age = random.choice([18, 19, 21, 23])  # More variety
     inclusion_rules.append(Rule(
         field="age",
         operator=">=",
         value=min_age
     ))
     
-    max_age = random.choice([65, 70, 75, 80])
+    max_age = random.choice([65, 70, 75, 80, 85])  # More variety
     inclusion_rules.append(Rule(
         field="age",
         operator="<=",
@@ -230,16 +230,16 @@ def generate_random_trial(seed: int = None) -> ClinicalTrial:
         value=cancer_type
     ))
     
-    if random.random() > 0.5:
-        min_hb = round(random.uniform(8.0, 10.0), 1)
+    if random.random() > 0.5:  # Keep original frequency for task structure
+        min_hb = round(random.uniform(8.0, 10.0), 1)  # Slightly tighter but maintain task viability
         inclusion_rules.append(Rule(
             field="lab_values.hb",
             operator=">=",
             value=min_hb
         ))
     
-    if random.random() > 0.5:
-        max_creatinine = round(random.uniform(1.5, 2.5), 1)
+    if random.random() > 0.5:  # Keep original frequency for task structure
+        max_creatinine = round(random.uniform(1.5, 2.5), 1)  # Slightly tighter but maintain task viability
         inclusion_rules.append(Rule(
             field="lab_values.creatinine",
             operator="<=",
@@ -265,9 +265,9 @@ def generate_random_trial(seed: int = None) -> ClinicalTrial:
         ))
     
     has_creatinine_inclusion = any(r.field == "lab_values.creatinine" for r in inclusion_rules)
-    if has_creatinine_inclusion and random.random() > 0.3:
+    if has_creatinine_inclusion and random.random() > 0.3:  # Keep original frequency for task structure
         incl_creatinine_max = next(r.value for r in inclusion_rules if r.field == "lab_values.creatinine")
-        excl_creatinine = round(random.uniform(incl_creatinine_max * 0.7, incl_creatinine_max * 0.95), 1)
+        excl_creatinine = round(random.uniform(incl_creatinine_max * 0.7, incl_creatinine_max * 0.95), 1)  # Original overlap
         exclusion_rules.append(Rule(
             field="lab_values.creatinine",
             operator=">",
@@ -275,9 +275,9 @@ def generate_random_trial(seed: int = None) -> ClinicalTrial:
         ))
     
     has_hb_inclusion = any(r.field == "lab_values.hb" for r in inclusion_rules)
-    if has_hb_inclusion and random.random() > 0.3:
+    if has_hb_inclusion and random.random() > 0.3:  # Keep original frequency for task structure
         incl_hb_min = next(r.value for r in inclusion_rules if r.field == "lab_values.hb")
-        excl_hb = round(random.uniform(incl_hb_min * 1.05, incl_hb_min * 1.3), 1)
+        excl_hb = round(random.uniform(incl_hb_min * 1.05, incl_hb_min * 1.3), 1)  # Original overlap
         exclusion_rules.append(Rule(
             field="lab_values.hb",
             operator="<",

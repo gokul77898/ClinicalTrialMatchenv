@@ -224,9 +224,16 @@ class ClinicalTrialEnv:
         return self._build_observation()
     
     def _build_trial_summaries(self) -> list[dict]:
-        """Build trial summary dicts from self._trials."""
+        """Build trial summary dicts from self._trials with randomization."""
+        import random
+        
         available_trials = []
-        for trial in self._trials:
+        # Create list of trials first
+        trials_list = list(self._trials)
+        # Randomize order to remove bias
+        random.shuffle(trials_list)
+        
+        for trial in trials_list:
             has_biomarker_req = (
                 trial.required_biomarkers.EGFR is not None or
                 trial.required_biomarkers.ALK is not None or

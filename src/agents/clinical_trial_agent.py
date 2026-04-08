@@ -127,25 +127,21 @@ class ClinicalTrialAgent:
                 if info.get("exclusion_triggered", False):
                     continue  # Discard immediately, do not score
                 
-                # Improved scoring system
+                # Non-leaky scoring system - NO direct eligibility access
                 score = 0.0
                 
-                # +3 for full eligibility (highest priority)
-                if info.get("eligible", False):
-                    score += 3.0
-                # +1.5 for inclusion pass only
-                elif info.get("inclusion_pass", False):
-                    score += 1.5
+                # ONLY use allowed signals: inclusion_pass and exclusion_triggered
+                if info.get("inclusion_pass", False):
+                    score += 2.0  # Strong weight for inclusion pass
                 
-                # +0.5 biomarker boost (PD_L1 > 50)
+                # Small heuristic boosts (allowed)
                 if hasattr(obs.patient, 'biomarkers') and hasattr(obs.patient.biomarkers, 'PD_L1'):
                     if obs.patient.biomarkers.PD_L1 > 50:
-                        score += 0.5
+                        score += 0.3  # Small biomarker boost
                 
-                # +0.5 age sanity bonus (18-75)
                 if hasattr(obs.patient, 'age'):
                     if 18 <= obs.patient.age <= 75:
-                        score += 0.5
+                        score += 0.2  # Small age sanity bonus
                 
                 trial_scores[trial_id] = score
         
