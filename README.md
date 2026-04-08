@@ -47,6 +47,23 @@ This environment tests whether AI agents can:
 - **Decide** under uncertainty with life-or-death stakes
 - **Adapt** across 7 increasingly difficult scenarios
 
+## Phase 3: Intelligent Decision-Making Agent
+
+We've implemented a **deterministic ClinicalTrialAgent** that achieves **67% success rate** using intelligent rule-based reasoning:
+
+### Key Features
+- **Non-leaky evaluation**: No direct access to eligibility results
+- **Smart scoring system**: Prioritizes inclusion passes (+2.0) with heuristic boosts
+- **Realistic environment**: Varied trial thresholds, randomized order
+- **Robust evaluation**: 100-episode testing with failure mode analysis
+
+### Agent Performance
+```
+ClinicalTrialAgent: 67% success rate
+Random Baseline:   6% success rate
+Improvement:      +61%
+```
+
 ---
 
 ## 🚀 Get Started in 60 Seconds
@@ -259,57 +276,119 @@ python inference.py
 ```
 
 **118 tests** covering:
-- ✅ Eligibility engine (inclusion, exclusion, biomarkers, comorbidities)
-- ✅ All 7 graders (task-specific scoring)
-- ✅ API endpoints (reset, step, tasks, state)
-- ✅ End-to-end episodes for every task
-- ✅ OpenEnv spec compliance
+- Eligibility engine (inclusion, exclusion, biomarkers, comorbidities)
+- All 7 graders (task-specific scoring)
+- API endpoints (reset, step, tasks, state)
+- End-to-end episodes for every task
+- OpenEnv spec compliance
+
+## Phase 3 Agent Usage
+
+```python
+from src.environment import ClinicalTrialEnv
+from src.agents.clinical_trial_agent import ClinicalTrialAgent
+
+# Run single episode
+env = ClinicalTrialEnv()
+agent = ClinicalTrialAgent()
+
+result = agent.run_episode(env, task_id="single_match")
+print(f"Success: {result['success']}")
+print(f"Reward: {result['reward']}")
+print(f"Steps: {result['steps']}")
+
+# Run robust evaluation (100 episodes)
+from src.agents.robust_evaluation import run_robust_evaluation
+results = run_robust_evaluation(num_episodes=100)
+print(f"Agent success rate: {results['agent']['success_rate']:.1f}%")
+```
+
+### Agent Strategy
+1. **Investigate**: cancer_type, age, biomarkers.PD_L1
+2. **Filter**: Trials matching patient's cancer type
+3. **Score**: Evaluate up to 4 trials with non-leaky scoring
+4. **Select**: Highest scoring trial (tie-breaking by check order)
+5. **Resolve**: Finalize selection
+
+### Scoring System
+- **+2.0**: Inclusion criteria passed
+- **+0.3**: PD_L1 biomarker > 50
+- **+0.2**: Age in typical range (18-75)
+- **Discard**: Any exclusion triggered
 
 ---
 
-## 📊 Baseline Results
+## Baseline Results
 
-**Model:** `meta-llama/Meta-Llama-3-70B-Instruct:novita`
+**LLM Model:** `meta-llama/Meta-Llama-3-70B-Instruct:novita`
 
 | Task | Grade | Result | Steps |
 |------|:-----:|:------:|:-----:|
-| single_match | **0.90** | ✅ | 4 |
-| hidden_exclusion | **0.12** | ❌ | 17 |
-| ambiguous_match | **0.14** | ❌ | 18 |
-| competing_trials | **0.70** | ✅ | 16 |
-| contradictory_info | **0.00** | ❌ | 17 |
-| multi_patient | **0.00** | ❌ | 17 |
-| logical_inference | **0.15** | ❌ | 18 |
+| single_match | **0.90** |  | 4 |
+| hidden_exclusion | **0.12** |  | 17 |
+| ambiguous_match | **0.14** |  | 18 |
+| competing_trials | **0.70** |  | 16 |
+| contradictory_info | **0.00** |  | 17 |
+| multi_patient | **0.00** |  | 17 |
+| logical_inference | **0.15** |  | 18 |
 | | | | |
 | **Average** | **0.29** | **2/7** | |
 
-> Only 2 of 7 tasks solved. Unknown labs, conflicting data, interaction traps, and minimal guidance make this brutally hard. **Your move.**
+> Only 2 of 7 tasks solved. Unknown labs, conflicting data, interaction traps, and minimal guidance make this brutally hard.
+
+## Phase 3 Agent Results
+
+**ClinicalTrialAgent:** Deterministic rule-based reasoning
+
+| Metric | Agent | Random Baseline | Improvement |
+|--------|-------|----------------|-------------|
+| **Success Rate** | **67%** | 6% | **+61%** |
+| **Avg Reward** | 0.340 | -0.680 | +1.020 |
+| **Avg Steps** | 8.3 | 2.0 | +6.3 |
+| **Failure Mode** | Exclusion (100%) | Inclusion (100%) | |
+
+**Key Achievements:**
+- Exceeds target performance (35-55%)
+- Non-leaky evaluation (no direct eligibility access)
+- Robust 100-episode testing
+- All 118 tests passing
+- Deterministic, reproducible behavior
+
+**Main Challenge:** Complex exclusion criteria remain the primary failure cause for the agent.
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 ClinicalTrialMatchEnv/
-│
-├── api/server.py                  → FastAPI server on port 7860
-│
-├── src/
-│   ├── environment.py             → Core environment (reset, step, state)
-│   ├── tasks.py                   → 7 task definitions + seed generators
-│   ├── graders.py                 → Per-task grading (safety-aware)
-│   ├── models.py                  → Action, Observation, Reward schemas
-│   ├── schemas/
-│   │   ├── patient_schema.py      → Patient + biomarkers + lab trends
-│   │   └── trial_schema.py        → Trial + eligibility rules
-│   └── engine/
-│       └── eligibility_engine.py  → Rule-based eligibility checker
-│
-├── tests/                         → 118 tests (unit + integration)
-├── inference.py                   → LLM baseline agent
-├── openenv.yaml                   → OpenEnv specification
-├── Dockerfile                     → Production container
-└── requirements.txt               → fastapi, uvicorn, pydantic, openai
+|
+|-- api/server.py                  --> FastAPI server on port 7860
+|
+|-- src/
+|   |-- environment.py             --> Core environment (reset, step, state)
+|   |-- tasks.py                   --> 7 task definitions + seed generators
+|   |-- graders.py                 --> Per-task grading (safety-aware)
+|   |-- models.py                  --> Action, Observation, Reward schemas
+|   |-- schemas/
+|   |   |-- patient_schema.py      --> Patient + biomarkers + lab trends
+|   |   |-- trial_schema.py        --> Trial + eligibility rules
+|   |-- engine/
+|       |-- eligibility_engine.py  --> Rule-based eligibility checker
+|   |-- agents/
+|   |   |-- clinical_trial_agent.py --> Phase 3 deterministic agent
+|   |   |-- evaluate_agent.py      --> Agent evaluation utilities
+|   |   |-- robust_evaluation.py   --> 100-episode robust evaluation
+|   |-- config.py                  --> Mode configuration (STRICT/REALISTIC)
+|
+|-- data/
+|   |-- realistic_trials.json      --> 8 manual oncology trial patterns
+|
+|-- tests/                         --> 118 tests (unit + integration)
+|-- inference.py                   --> LLM baseline agent
+|-- openenv.yaml                   --> OpenEnv specification
+|-- Dockerfile                     --> Production container
+|-- requirements.txt               --> fastapi, uvicorn, pydantic, openai
 ```
 
 ---
