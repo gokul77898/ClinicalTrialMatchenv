@@ -26,7 +26,6 @@ def evaluate_agent(num_episodes: int = 20, task_ids: List[str] = None) -> Dict:
     if task_ids is None:
         task_ids = ["single_match", "hidden_exclusion", "ambiguous_match"]
     
-    agent = ClinicalTrialAgent()
     results = []
     
     for episode in range(num_episodes):
@@ -34,7 +33,8 @@ def evaluate_agent(num_episodes: int = 20, task_ids: List[str] = None) -> Dict:
         task_id = task_ids[episode % len(task_ids)]
         
         env = ClinicalTrialEnv()
-        result = agent.run_episode(env)
+        agent = ClinicalTrialAgent()  # Create fresh agent for each episode
+        result = agent.run_episode(env, task_id=task_id)
         
         results.append({
             "episode": episode + 1,
