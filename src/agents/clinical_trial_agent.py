@@ -81,21 +81,21 @@ class ClinicalTrialAgent:
     
     def _investigate_smart(self, env: ClinicalTrialEnv, obs: Observation) -> None:
         """
-        Smarter investigation strategy.
+        Optimized investigation strategy.
         
-        Always investigate:
-        - cancer_type (for filtering)
-        - age (important for exclusions)
-        - biomarkers.PD_L1 (for scoring)
+        Priority order:
+        1. cancer_type (for filtering)
+        2. age (important for exclusions)
+        3. biomarkers.PD_L1 (for scoring)
         """
-        # Always investigate cancer_type first (most important for filtering)
+        # 1. Always investigate cancer_type first (most important for filtering)
         self.investigate(env, "cancer_type")
         
-        # Investigate age (important for exclusion criteria)
+        # 2. Investigate age (important for exclusion criteria)
         if self.episode_steps < 3:
             self.investigate(env, "age")
         
-        # Investigate PD_L1 if we have time (useful for scoring)
+        # 3. Investigate PD_L1 if we have time (useful for scoring)
         if self.episode_steps < 4:
             self.investigate(env, "biomarkers.PD_L1")
     
@@ -112,10 +112,10 @@ class ClinicalTrialAgent:
             Dict mapping trial_id to score
         """
         trial_scores = {}
-        trials_to_check = matching_trials[:3] if matching_trials else obs.available_trials[:3]
+        trials_to_check = matching_trials[:4] if matching_trials else obs.available_trials[:4]
         
         for trial_id in trials_to_check:
-            if self.episode_steps >= 6:  # Stop if approaching step limit
+            if self.episode_steps >= 7:  # Stop if approaching step limit (max 7 steps)
                 break
             
             result = self.check_trial(env, trial_id)
@@ -127,19 +127,25 @@ class ClinicalTrialAgent:
                 if info.get("exclusion_triggered", False):
                     continue  # Discard immediately, do not score
                 
-                # Simplified scoring - focus on basic eligibility
+                # Improved scoring system
                 score = 0.0
                 
-                # +2 for full eligibility (most important)
+                # +3 for full eligibility (highest priority)
                 if info.get("eligible", False):
-                    score += 2.0
-                # +1 for inclusion pass only
+                    score += 3.0
+                # +1.5 for inclusion pass only
                 elif info.get("inclusion_pass", False):
-                    score += 1.0
+                    score += 1.5
                 
-                # +0.5 bonus for cancer type match (already filtered but good to reinforce)
-                if trial_id in matching_trials:
-                    score += 0.5
+                # +0.5 biomarker boost (PD_L1 > 50)
+                if hasattr(obs.patient, 'biomarkers') and hasattr(obs.patient.biomarkers, 'PD_L1'):
+                    if obs.patient.biomarkers.PD_L1 > 50:
+                        score += 0.5
+                
+                # +0.5 age sanity bonus (18-75)
+                if hasattr(obs.patient, 'age'):
+                    if 18 <= obs.patient.age <= 75:
+                        score += 0.5
                 
                 trial_scores[trial_id] = score
         
@@ -147,7 +153,7 @@ class ClinicalTrialAgent:
     
     def _select_best_trial(self, trial_scores: Dict[str, float], obs: Observation, env: ClinicalTrialEnv) -> str:
         """
-        Select trial with highest score.
+        Select trial with highest score with tie breaker logic.
         
         Args:
             trial_scores: Dict of trial_id to score
@@ -158,17 +164,41 @@ class ClinicalTrialAgent:
             Selected trial ID
         """
         if trial_scores:
-            # Select trial with highest score
-            best_trial = max(trial_scores.items(), key=lambda x: x[1])[0]
+            # Sort by score (descending), then by check order (tie breaker)
+            sorted_trials = sorted(trial_scores.items(), key=lambda x: (-x[1], list(trial_scores.keys()).index(x[0])))
+            best_trial = sorted_trials[0][0]
         else:
-            # Fallback: select first available trial
-            best_trial = obs.available_trials[0]["trial_id"]
+            # Better fallback: check for inclusion_pass trials
+            best_trial = self._find_best_fallback_trial(obs, env)
         
         env.step(Action(type="select_trial", trial_id=best_trial))
         self.selected_trial = best_trial
         self.episode_steps += 1
         
         return best_trial
+    
+    def _find_best_fallback_trial(self, obs: Observation, env: ClinicalTrialEnv) -> str:
+        """
+        Find best fallback trial when no eligible trials found.
+        
+        Args:
+            obs: Current observation
+            env: ClinicalTrial environment
+            
+        Returns:
+            Best fallback trial ID
+        """
+        # Check available trials for inclusion_pass
+        for trial in obs.available_trials[:2]:  # Check first 2 trials
+            if self.episode_steps >= 7:  # Step limit
+                break
+            
+            result = self.check_trial(env, trial["trial_id"])
+            if result and result.get("info", {}).get("inclusion_pass", False):
+                return trial["trial_id"]
+        
+        # Last resort: first available trial
+        return obs.available_trials[0]["trial_id"]
     
     def investigate(self, env: ClinicalTrialEnv, field: str) -> None:
         """
