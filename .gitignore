@@ -56,3 +56,10 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Model files and training data (too large for HF)
+models/
+data/behavior_dataset.pkl
+*.pt
+*.zip
+*.pkl
