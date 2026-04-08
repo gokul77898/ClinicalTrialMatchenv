@@ -1,12 +1,26 @@
 """
-Strict Clinical Patient Schema for Simulation Environment
-Uses Pydantic for strict validation with no tolerance for invalid/missing data.
+Clinical Patient Schema for Simulation Environment
+
+Supports TWO MODES:
+- STRICT_MODE: 100% Phase 1 spec compliance (no nulls, strict enums)
+- REALISTIC_MODE: Advanced simulation (missing data, conflicts, trends)
+
+Mode is controlled by src/config.py
 """
 
-from pydantic import BaseModel, Field, field_validator, ConfigDict
-from typing import Literal, Optional
+from pydantic import BaseModel, Field, field_validator, ConfigDict, model_validator
+from typing import Literal, Optional, Union
 from uuid import UUID, uuid4
 import random
+
+from src.config import (
+    STRICT_MODE,
+    REALISTIC_MODE,
+    ALLOW_MISSING_LAB_VALUES,
+    ALLOW_CONFLICTING_FIELDS,
+    ALLOW_TEMPORAL_TRENDS,
+    CANCER_TYPE_STRICT_ENUM
+)
 
 
 class Biomarkers(BaseModel):
@@ -37,58 +51,91 @@ class LabValueTrend(BaseModel):
     rate: float = Field(ge=0.0, le=1.0)
 
 
-class LabValues(BaseModel):
-    """Lab values with exact required keys and strict ranges.
-    Values may be None (unknown) if lab test was not performed."""
-    model_config = ConfigDict(extra='forbid')
-    
-    hb: Optional[float] = Field(None, ge=0, le=20)
-    wbc: Optional[float] = Field(None, ge=0, le=20000)
-    creatinine: Optional[float] = Field(None, ge=0, le=10)
+if STRICT_MODE:
+    class LabValues(BaseModel):
+        """Lab values - STRICT_MODE: All values required, no nulls."""
+        model_config = ConfigDict(extra='forbid')
+        
+        hb: float = Field(ge=0, le=20)
+        wbc: float = Field(ge=0, le=20000)
+        creatinine: float = Field(ge=0, le=10)
 
-    @property
-    def hb_unknown(self) -> bool:
-        return self.hb is None
+elif REALISTIC_MODE:
+    class LabValues(BaseModel):
+        """Lab values - REALISTIC_MODE: Values may be None (unknown)."""
+        model_config = ConfigDict(extra='forbid')
+        
+        hb: Optional[float] = Field(None, ge=0, le=20)
+        wbc: Optional[float] = Field(None, ge=0, le=20000)
+        creatinine: Optional[float] = Field(None, ge=0, le=10)
 
-    @property
-    def wbc_unknown(self) -> bool:
-        return self.wbc is None
+        @property
+        def hb_unknown(self) -> bool:
+            return self.hb is None
 
-    @property
-    def creatinine_unknown(self) -> bool:
-        return self.creatinine is None
+        @property
+        def wbc_unknown(self) -> bool:
+            return self.wbc is None
+
+        @property
+        def creatinine_unknown(self) -> bool:
+            return self.creatinine is None
 
 
-class Patient(BaseModel):
-    """
-    Strict patient model for clinical trial simulation.
-    
-    ALL fields are required.
-    NO fields can be null.
-    NO extra fields allowed.
-    ALL numeric ranges enforced.
-    """
-    model_config = ConfigDict(extra='forbid')
-    
-    id: UUID
-    age: int = Field(ge=0, le=120)
-    gender: Literal["male", "female", "other"]
-    cancer_type: str = Field(min_length=1)
-    stage: Literal["I", "II", "III", "IV"]
-    biomarkers: Biomarkers
-    prior_treatments: list[str]
-    lab_values: LabValues
-    lab_value_trends: list[LabValueTrend] = Field(default_factory=list)
-    comorbidities: list[Comorbidity] = Field(default_factory=list)
-    conflicting_fields: dict = Field(default_factory=dict)
-    data_freshness_days: int = Field(default=0, ge=0, le=365)
-    
-    @field_validator('cancer_type')
-    @classmethod
-    def validate_cancer_type(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("cancer_type cannot be empty or whitespace")
-        return v
+if STRICT_MODE:
+    class Patient(BaseModel):
+        """
+        STRICT_MODE Patient: 100% Phase 1 spec compliance.
+        
+        - ALL fields required
+        - NO null values
+        - cancer_type is strict enum
+        - NO advanced features (trends, conflicts, freshness)
+        """
+        model_config = ConfigDict(extra='forbid')
+        
+        id: UUID
+        age: int = Field(ge=0, le=120)
+        gender: Literal["male", "female", "other"]
+        cancer_type: Literal["lung cancer", "breast cancer", "colon cancer"]
+        stage: Literal["I", "II", "III", "IV"]
+        biomarkers: Biomarkers
+        prior_treatments: list[str]
+        lab_values: LabValues
+        comorbidities: list[Comorbidity] = Field(default_factory=list)
+
+elif REALISTIC_MODE:
+    class Patient(BaseModel):
+        """
+        REALISTIC_MODE Patient: Advanced simulation features.
+        
+        - Lab values may be None (unknown)
+        - Includes temporal trends
+        - Includes conflicting fields
+        - Includes data freshness tracking
+        """
+        model_config = ConfigDict(extra='forbid')
+        
+        id: UUID
+        age: int = Field(ge=0, le=120)
+        gender: Literal["male", "female", "other"]
+        cancer_type: str = Field(min_length=1)
+        stage: Literal["I", "II", "III", "IV"]
+        biomarkers: Biomarkers
+        prior_treatments: list[str]
+        lab_values: LabValues
+        lab_value_trends: list[LabValueTrend] = Field(default_factory=list)
+        comorbidities: list[Comorbidity] = Field(default_factory=list)
+        conflicting_fields: dict = Field(default_factory=dict)
+        data_freshness_days: int = Field(default=0, ge=0, le=365)
+        
+        @field_validator('cancer_type')
+        @classmethod
+        def validate_cancer_type(cls, v: str) -> str:
+            if not v or not v.strip():
+                raise ValueError("cancer_type cannot be empty or whitespace")
+            # In REALISTIC_MODE, allow any cancer type string
+            return v
 
 
 def generate_random_patient(seed: int = None) -> Patient:
@@ -141,72 +188,116 @@ def generate_random_patient(seed: int = None) -> Patient:
     else:
         alk_expression = round(random.uniform(0.0, 0.4), 3)
 
-    # Lab values with 15% chance of being unknown
-    hb_val = None if random.random() < 0.15 else round(
-        random.uniform(8.0, 16.0), 2
-    )
-    wbc_val = None if random.random() < 0.15 else round(
-        random.uniform(3000, 15000), 2
-    )
-    creatinine_val = None if random.random() < 0.15 else round(
-        random.uniform(0.5, 2.5), 2
-    )
+    # Lab values - mode-dependent
+    if STRICT_MODE:
+        # STRICT_MODE: All lab values MUST be present (no None)
+        hb_val = round(random.uniform(8.0, 16.0), 2)
+        wbc_val = round(random.uniform(3000, 15000), 2)
+        creatinine_val = round(random.uniform(0.5, 2.5), 2)
+    elif REALISTIC_MODE:
+        # REALISTIC_MODE: 15% chance of missing lab values
+        from src.config import MISSING_LAB_VALUE_PROBABILITY
+        hb_val = None if random.random() < MISSING_LAB_VALUE_PROBABILITY else round(
+            random.uniform(8.0, 16.0), 2
+        )
+        wbc_val = None if random.random() < MISSING_LAB_VALUE_PROBABILITY else round(
+            random.uniform(3000, 15000), 2
+        )
+        creatinine_val = None if random.random() < MISSING_LAB_VALUE_PROBABILITY else round(
+            random.uniform(0.5, 2.5), 2
+        )
 
     patient_stage = random.choice(["I", "II", "III", "IV"])
 
-    # 20% chance of conflicting stage report
-    if random.random() < 0.20:
-        conflicting_fields = {
-            "stage": {
-                "reported": patient_stage,
-                "notes_say": "II" if patient_stage == "III" else "III",
-                "confidence": "low"
+    # Conflicting fields - only in REALISTIC_MODE
+    if REALISTIC_MODE and ALLOW_CONFLICTING_FIELDS:
+        from src.config import CONFLICTING_FIELD_PROBABILITY
+        if random.random() < CONFLICTING_FIELD_PROBABILITY:
+            conflicting_fields = {
+                "stage": {
+                    "reported": patient_stage,
+                    "notes_say": "II" if patient_stage == "III" else "III",
+                    "confidence": "low"
+                }
             }
-        }
+        else:
+            conflicting_fields = {}
+        data_freshness_days = random.randint(0, 180)
     else:
         conflicting_fields = {}
+        data_freshness_days = 0
 
-    data_freshness_days = random.randint(0, 180)
-
-    patient = Patient(
-        id=patient_id,
-        age=random.randint(30, 85),
-        gender=random.choice(["male", "female", "other"]),
-        cancer_type=random.choice(cancer_types),
-        stage=patient_stage,
-        biomarkers=Biomarkers(
-            EGFR=egfr_val,
-            ALK=alk_val,
-            PD_L1=round(random.uniform(0, 100), 2),
-            EGFR_expression=egfr_expression,
-            ALK_expression=alk_expression
-        ),
-        prior_treatments=random.sample(
-            common_treatments, 
-            k=random.randint(0, 3)
-        ),
-        lab_values=LabValues(
-            hb=hb_val,
-            wbc=wbc_val,
-            creatinine=creatinine_val
-        ),
-        lab_value_trends=[
-            LabValueTrend(
-                name=name,
-                direction=random.choice(["increasing", "decreasing", "stable"]),
-                rate=round(random.uniform(0.0, 0.5), 3)
-            )
-            for name in ["hb", "wbc", "creatinine"]
-        ],
-        comorbidities=[
-            Comorbidity(
-                name=random.choice(common_comorbidities),
-                severity=random.choice(["mild", "moderate", "severe"])
-            )
-            for _ in range(random.randint(0, 2))
-        ],
-        conflicting_fields=conflicting_fields,
-        data_freshness_days=data_freshness_days
-    )
+    # Build patient - mode-dependent fields
+    comorbidities = [
+        Comorbidity(
+            name=random.choice(common_comorbidities),
+            severity=random.choice(["mild", "moderate", "severe"])
+        )
+        for _ in range(random.randint(0, 2))
+    ]
+    
+    if STRICT_MODE:
+        # STRICT_MODE: No advanced features
+        patient = Patient(
+            id=patient_id,
+            age=random.randint(30, 85),
+            gender=random.choice(["male", "female", "other"]),
+            cancer_type=random.choice(cancer_types),
+            stage=patient_stage,
+            biomarkers=Biomarkers(
+                EGFR=egfr_val,
+                ALK=alk_val,
+                PD_L1=round(random.uniform(0, 100), 2),
+                EGFR_expression=egfr_expression,
+                ALK_expression=alk_expression
+            ),
+            prior_treatments=random.sample(
+                common_treatments, 
+                k=random.randint(0, 3)
+            ),
+            lab_values=LabValues(
+                hb=hb_val,
+                wbc=wbc_val,
+                creatinine=creatinine_val
+            ),
+            comorbidities=comorbidities
+        )
+    
+    elif REALISTIC_MODE:
+        # REALISTIC_MODE: Include all advanced features
+        patient = Patient(
+            id=patient_id,
+            age=random.randint(30, 85),
+            gender=random.choice(["male", "female", "other"]),
+            cancer_type=random.choice(cancer_types),
+            stage=patient_stage,
+            biomarkers=Biomarkers(
+                EGFR=egfr_val,
+                ALK=alk_val,
+                PD_L1=round(random.uniform(0, 100), 2),
+                EGFR_expression=egfr_expression,
+                ALK_expression=alk_expression
+            ),
+            prior_treatments=random.sample(
+                common_treatments, 
+                k=random.randint(0, 3)
+            ),
+            lab_values=LabValues(
+                hb=hb_val,
+                wbc=wbc_val,
+                creatinine=creatinine_val
+            ),
+            lab_value_trends=[
+                LabValueTrend(
+                    name=name,
+                    direction=random.choice(["increasing", "decreasing", "stable"]),
+                    rate=round(random.uniform(0.0, 0.5), 3)
+                )
+                for name in ["hb", "wbc", "creatinine"]
+            ],
+            comorbidities=comorbidities,
+            conflicting_fields=conflicting_fields,
+            data_freshness_days=data_freshness_days
+        )
     
     return patient
