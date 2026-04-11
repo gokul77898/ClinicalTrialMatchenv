@@ -378,11 +378,12 @@ def main():
     try:
         _ensure_server()
     except Exception as e:
-        # Can't reach server — emit minimal valid output
-        _log_start(task=TASKS[0])
-        _log_step(step=1, action_str='resolve()', reward=0.0,
-                  done=True, error="server_unavailable")
-        _log_end(success=False, steps=1, rewards=[0.0])
+        # Can't reach server — emit minimal valid output for all 3 tasks
+        for t in TASKS:
+            _log_start(task=t)
+            _log_step(step=1, action_str='resolve()', reward=0.0,
+                      done=True, error="server_unavailable")
+            _log_end(success=False, steps=1, rewards=[0.0])
         sys.exit(1)
 
     # Initialize LLM client (optional — works without it via heuristic)
@@ -393,14 +394,17 @@ def main():
         except Exception:
             pass
 
-    # Run single task (first task only for compliance)
-    task_id = TASKS[0]
-    result = run_task(client, task_id)
+    # Run all 3 tasks (submission requires >= 3 tasks with graders)
+    all_done = True
+    for task_id in TASKS:
+        result = run_task(client, task_id)
+        if not result.get("done", False):
+            all_done = False
 
     # Cleanup
     _stop_server()
 
-    sys.exit(0 if result.get("done", False) else 1)
+    sys.exit(0 if all_done else 1)
 
 
 if __name__ == "__main__":

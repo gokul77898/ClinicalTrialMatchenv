@@ -649,7 +649,12 @@ class ClinicalTrialEnv:
         # Score: 0.3 per correct case + efficiency
         case_score = total_correct * 0.3
         efficiency = 0.1 if self._steps_taken <= 12 else (0.05 if self._steps_taken <= 16 else 0.0)
-        grade = round(min(1.0, case_score + efficiency), 4)
+        from src.config import CLAMP_SCORES_FOR_HACKATHON
+        raw = case_score + efficiency
+        if CLAMP_SCORES_FOR_HACKATHON:
+            grade = round(max(0.01, min(0.99, raw)), 4)
+        else:
+            grade = round(max(0.0, min(1.0, raw)), 4)
         
         reward = (1.0 if total_correct == len(self._cases) else 0.0) + (0.2 if self._steps_taken <= 12 else 0.0)
         reason = f"Multi-patient resolve: {total_correct}/{len(self._cases)} correct"

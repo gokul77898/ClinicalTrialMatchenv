@@ -47,7 +47,7 @@ class TestGraders:
         print(f"Correct: {episode.correct_trial_id}")
         print(f"Score: {score}")
         
-        assert score == 1.0, f"Expected 1.0, got {score}"
+        assert score == 0.99, f"Expected 0.99, got {score}"
         print("✅ PASSED")
     
     def test_wrong_selection_scores_below_half_on_easy(self):
@@ -110,7 +110,7 @@ class TestGraders:
         print(f"Score: {score}")
         
         # Wrong selection gets no efficiency bonus (BUG FIX 2)
-        assert score == 0.0, f"Expected 0.0, got {score}"
+        assert score == 0.01, f"Expected 0.01, got {score}"
         print("✅ PASSED")
     
     def test_perfect_agent_on_medium_scores_high(self):
@@ -425,7 +425,7 @@ class TestGraders:
         
         score = grade_task("single_match", perfect_easy)
         print(f"\nPerfect easy: {score}")
-        assert score == 1.0
+        assert score == 0.99
         
         # Perfect medium episode
         perfect_medium = EpisodeHistory(

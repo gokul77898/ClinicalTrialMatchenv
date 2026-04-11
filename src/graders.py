@@ -10,6 +10,12 @@ from typing import Optional
 
 from src.config import CLAMP_SCORES_FOR_HACKATHON
 
+def _clamp(raw: float) -> float:
+    """Clamp a raw score to the required range."""
+    if CLAMP_SCORES_FOR_HACKATHON:
+        return round(max(0.01, min(0.99, raw)), 4)
+    return round(max(0.0, min(1.0, raw)), 4)
+
 
 @dataclass
 class EpisodeHistory:
@@ -44,9 +50,8 @@ def grade_single_match(episode: EpisodeHistory) -> float:
     Returns:
         float: Score between 0.0 and 1.0
     """
-    # BUG FIX 1: No selection = 0.0
     if episode.final_selected_trial_id is None:
-        return 0.0
+        return _clamp(0.0)
     
     # Component 1: Correct Selection (0.0 to 0.6)
     if episode.final_selected_trial_id == episode.correct_trial_id:
@@ -62,7 +67,6 @@ def grade_single_match(episode: EpisodeHistory) -> float:
         criteria_score = 0.0
     
     # Component 3: Efficiency (0.0 to 0.2)
-    # BUG FIX 2: Efficiency bonus only if correct
     if episode.final_selected_trial_id == episode.correct_trial_id:
         if episode.steps_taken <= 3:
             efficiency_score = 0.2
@@ -73,15 +77,8 @@ def grade_single_match(episode: EpisodeHistory) -> float:
     else:
         efficiency_score = 0.0
     
-    # Final score
     raw = selection_score + criteria_score + efficiency_score
-    if CLAMP_SCORES_FOR_HACKATHON:
-        # Hackathon requires scores in (0, 1) - not 0.0 or 1.0
-        clamped = max(0.01, min(0.99, raw))
-    else:
-        # Internal testing allows [0, 1]
-        clamped = max(0.0, min(1.0, raw))
-    return round(clamped, 4)
+    return _clamp(raw)
 
 
 def grade_hidden_exclusion(episode: EpisodeHistory) -> float:
@@ -100,9 +97,8 @@ def grade_hidden_exclusion(episode: EpisodeHistory) -> float:
     Returns:
         float: Score between 0.0 and 1.0
     """
-    # BUG FIX 1: No selection = 0.0
     if episode.final_selected_trial_id is None:
-        return 0.0
+        return _clamp(0.0)
     
     # Component 1: Correct Selection (0.0 to 0.5)
     if episode.final_selected_trial_id == episode.correct_trial_id:
@@ -127,7 +123,6 @@ def grade_hidden_exclusion(episode: EpisodeHistory) -> float:
         investigation_score = 0.0
     
     # Component 4: Efficiency (0.0 to 0.15)
-    # BUG FIX 2: Efficiency bonus only if correct
     if episode.final_selected_trial_id == episode.correct_trial_id:
         if episode.steps_taken <= 5:
             efficiency_score = 0.15
@@ -138,13 +133,8 @@ def grade_hidden_exclusion(episode: EpisodeHistory) -> float:
     else:
         efficiency_score = 0.0
     
-    # Final score
     raw = selection_score + coverage_score + investigation_score + efficiency_score
-    if CLAMP_SCORES_FOR_HACKATHON:
-        clamped = max(0.01, min(0.99, raw))
-    else:
-        clamped = max(0.0, min(1.0, raw))
-    return round(clamped, 4)
+    return _clamp(raw)
 
 
 def grade_ambiguous_match(episode: EpisodeHistory) -> float:
@@ -164,9 +154,8 @@ def grade_ambiguous_match(episode: EpisodeHistory) -> float:
     Returns:
         float: Score between 0.0 and 1.0
     """
-    # BUG FIX 1: No selection = 0.0
     if episode.final_selected_trial_id is None:
-        return 0.0
+        return _clamp(0.0)
     
     # Component 1: Correct Selection (0.0 to 0.4)
     if episode.final_selected_trial_id == episode.correct_trial_id:
@@ -198,7 +187,6 @@ def grade_ambiguous_match(episode: EpisodeHistory) -> float:
         lab_score = 0.0
     
     # Component 5: Efficiency (0.0 to 0.1)
-    # BUG FIX 2: Efficiency bonus only if correct
     if episode.final_selected_trial_id == episode.correct_trial_id:
         if episode.steps_taken <= 8:
             efficiency_score = 0.1
@@ -209,13 +197,8 @@ def grade_ambiguous_match(episode: EpisodeHistory) -> float:
     else:
         efficiency_score = 0.0
     
-    # Final score
     raw = selection_score + biomarker_score + coverage_score + lab_score + efficiency_score
-    if CLAMP_SCORES_FOR_HACKATHON:
-        clamped = max(0.01, min(0.99, raw))
-    else:
-        clamped = max(0.0, min(1.0, raw))
-    return round(clamped, 4)
+    return _clamp(raw)
 
 
 def grade_multi_patient(episode: EpisodeHistory) -> float:
@@ -233,10 +216,9 @@ def grade_multi_patient(episode: EpisodeHistory) -> float:
         float: Score between 0.0 and 1.0
     """
     if episode.final_selected_trial_id is None and not episode.actions_taken:
-        return 0.0
+        return _clamp(0.0)
     
     # Count select_trial actions mapped to cases via switch_case context
-    # Use episode.actions_taken to reconstruct per-case selections
     case_selections = {}
     current_case = "case_1"
     for action in episode.actions_taken:
@@ -246,7 +228,7 @@ def grade_multi_patient(episode: EpisodeHistory) -> float:
             case_selections[current_case] = action.get("trial_id")
     
     # Check correctness per case
-    correct_ids = episode.correct_trial_id  # Will be comma-separated or list
+    correct_ids = episode.correct_trial_id
     if isinstance(correct_ids, str) and "," in correct_ids:
         expected = [x.strip() for x in correct_ids.split(",")]
     elif isinstance(correct_ids, list):
@@ -259,10 +241,8 @@ def grade_multi_patient(episode: EpisodeHistory) -> float:
         if i < len(expected) and case_selections.get(case_id) == expected[i]:
             total_correct += 1
     
-    # Score: 0.3 per correct case
     case_score = total_correct * 0.3
     
-    # Efficiency bonus only if all correct
     if total_correct == 3:
         if episode.steps_taken <= 12:
             efficiency_score = 0.1
@@ -274,11 +254,7 @@ def grade_multi_patient(episode: EpisodeHistory) -> float:
         efficiency_score = 0.0
     
     raw = case_score + efficiency_score
-    if CLAMP_SCORES_FOR_HACKATHON:
-        clamped = max(0.01, min(0.99, raw))
-    else:
-        clamped = max(0.0, min(1.0, raw))
-    return round(clamped, 4)
+    return _clamp(raw)
 
 
 def grade_competing_trials(episode: EpisodeHistory) -> float:
@@ -298,7 +274,7 @@ def grade_competing_trials(episode: EpisodeHistory) -> float:
         float: Score between 0.0 and 1.0
     """
     if episode.final_selected_trial_id is None:
-        return 0.0
+        return _clamp(0.0)
     
     # Component 1: Correct Selection (best trial by score)
     if episode.final_selected_trial_id == episode.correct_trial_id:
@@ -338,11 +314,7 @@ def grade_competing_trials(episode: EpisodeHistory) -> float:
         efficiency_score = 0.0
     
     raw = selection_score + coverage_score + investigation_score + efficiency_score
-    if CLAMP_SCORES_FOR_HACKATHON:
-        clamped = max(0.01, min(0.99, raw))
-    else:
-        clamped = max(0.0, min(1.0, raw))
-    return round(clamped, 4)
+    return _clamp(raw)
 
 
 def grade_contradictory_info(episode: EpisodeHistory) -> float:
@@ -362,7 +334,7 @@ def grade_contradictory_info(episode: EpisodeHistory) -> float:
         float: Score between 0.0 and 1.0
     """
     if episode.final_selected_trial_id is None:
-        return 0.0
+        return _clamp(0.0)
     
     # Component 1: Correct Selection (0.0 to 0.4)
     if episode.final_selected_trial_id == episode.correct_trial_id:
@@ -401,11 +373,7 @@ def grade_contradictory_info(episode: EpisodeHistory) -> float:
         efficiency_score = 0.0
     
     raw = selection_score + flag_score + investigation_score + efficiency_score
-    if CLAMP_SCORES_FOR_HACKATHON:
-        clamped = max(0.01, min(0.99, raw))
-    else:
-        clamped = max(0.0, min(1.0, raw))
-    return round(clamped, 4)
+    return _clamp(raw)
 
 
 def grade_logical_inference(episode: EpisodeHistory) -> float:
@@ -426,7 +394,7 @@ def grade_logical_inference(episode: EpisodeHistory) -> float:
         float: Score between 0.0 and 1.0
     """
     if episode.final_selected_trial_id is None:
-        return 0.0
+        return _clamp(0.0)
     
     actions = episode.actions_taken
     investigated = set(
@@ -464,11 +432,7 @@ def grade_logical_inference(episode: EpisodeHistory) -> float:
         process_score += 0.15
     
     raw = selection_score + process_score
-    if CLAMP_SCORES_FOR_HACKATHON:
-        clamped = max(0.01, min(0.99, raw))
-    else:
-        clamped = max(0.0, min(1.0, raw))
-    return round(clamped, 4)
+    return _clamp(raw)
 
 
 def grade_task(task_id: str, episode: EpisodeHistory) -> float:

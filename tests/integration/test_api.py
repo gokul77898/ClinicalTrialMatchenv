@@ -184,7 +184,7 @@ class TestAPI:
         data = r.json()
         assert data["done"] == True
         assert "grade" in data["info"]
-        assert data["info"]["grade"] == 1.0
+        assert data["info"]["grade"] == 0.99
 
         print(f"  Status: {r.status_code}")
         print(f"  Done: {data['done']}")

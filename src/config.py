@@ -47,7 +47,7 @@ def get_active_mode() -> str:
 # Grader score clamping (for hackathon submission only)
 # Set to True for hackathon (scores must be in (0,1) not [0,1])
 # Set to False for internal testing (allows exact 0.0 and 1.0)
-CLAMP_SCORES_FOR_HACKATHON = False
+CLAMP_SCORES_FOR_HACKATHON = True
 
 # Mode-specific settings
 if STRICT_MODE:

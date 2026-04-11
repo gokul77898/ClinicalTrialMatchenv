@@ -58,7 +58,7 @@ baseline_scores:
   contradictory_info:
     correct: false
     model: meta-llama/Meta-Llama-3-70B-Instruct:novita
-    score: 0.00
+    score: 0.01
     steps: 17
   hidden_exclusion:
     correct: false
@@ -73,7 +73,7 @@ baseline_scores:
   multi_patient:
     correct: false
     model: meta-llama/Meta-Llama-3-70B-Instruct:novita
-    score: 0.0
+    score: 0.01
     steps: 17
   single_match:
     correct: true
@@ -140,14 +140,14 @@ reward:
   - -1.2
   - 1.2
 tasks:
-- baseline_score: 1.0
+- baseline_score: 0.99
   description: 'Patient has lung cancer. Pool of 3 trials. Exactly 1 eligible trial
     with obvious wrong candidates. Agent should solve in 3 steps.
 
     '
   difficulty: easy
   id: single_match
-  max_score: 1.0
+  max_score: 0.99
 - baseline_score: 0.73
   description: 'Patient has colon cancer. Pool of 5 trials. 2 trials pass inclusion
     but fail exclusion (traps). Agent must carefully check both inclusion AND exclusion.
@@ -155,7 +155,7 @@ tasks:
     '
   difficulty: medium
   id: hidden_exclusion
-  max_score: 1.0
+  max_score: 0.99
 - baseline_score: 0.54
   description: 'Patient has lung cancer. Pool of 7 trials. 3 exclusion traps, 3 biomarker
     failures. Agent must investigate biomarkers AND check all criteria.
@@ -163,8 +163,8 @@ tasks:
     '
   difficulty: hard
   id: ambiguous_match
-  max_score: 1.0
-- baseline_score: 0.0
+  max_score: 0.99
+- baseline_score: 0.01
   description: 'Patient is eligible for 2 trials. Agent must pick the best match based
     on biomarker expression quality and match score. Requires quality reasoning not
     just eligibility checking.
@@ -172,8 +172,8 @@ tasks:
     '
   difficulty: expert
   id: competing_trials
-  max_score: 1.0
-- baseline_score: 0.0
+  max_score: 0.99
+- baseline_score: 0.01
   description: 'Patient chart contains contradictory information. Agent must detect
     the inconsistency using flag_contradiction action before selecting a trial. Tests
     chart reading and anomaly detection.
@@ -181,15 +181,15 @@ tasks:
     '
   difficulty: expert
   id: contradictory_info
-  max_score: 1.0
-- baseline_score: 0.0
+  max_score: 0.99
+- baseline_score: 0.01
   description: 'Agent must match 3 patients simultaneously to their correct trials.
     Requires managing multiple patient contexts and using switch_case action.
 
     '
   difficulty: expert
   id: multi_patient
-  max_score: 1.0
+  max_score: 0.99
 - baseline_score: 0.15
   description: 'Patient has unknown lab values, borderline biomarker expression thresholds,
     interaction exclusion traps, and stale data. Pool of 7 trials. Agent must detect
@@ -199,5 +199,5 @@ tasks:
     '
   difficulty: expert
   id: logical_inference
-  max_score: 1.0
+  max_score: 0.99
 version: 1.0.0
