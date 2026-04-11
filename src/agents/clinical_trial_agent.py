@@ -46,6 +46,7 @@ class ClinicalTrialAgent:
         self.checked_trials = set()
         self.selected_trial = None
         self.episode_steps = 0
+        self.trial_analysis = {}  # per-trial decision data
         reasoning_trace = []
         
         if task_id:
@@ -91,7 +92,8 @@ class ClinicalTrialAgent:
             "reward": reward.value,
             "steps": self.episode_steps,
             "success": info.get("correct", False),
-            "reasoning": reasoning_trace
+            "reasoning": reasoning_trace,
+            "trial_analysis": self.trial_analysis,
         }
     
     def _investigate_smart(self, env: ClinicalTrialEnv, obs: Observation) -> None:
@@ -137,28 +139,48 @@ class ClinicalTrialAgent:
             
             if result:
                 info = result.get("info", {})
+                inc_pass = info.get("inclusion_pass", False)
+                exc_trig = info.get("exclusion_triggered", False)
                 
                 # STRONG EXCLUSION FILTER
-                if info.get("exclusion_triggered", False):
+                if exc_trig:
+                    self.trial_analysis[trial_id] = {
+                        "inclusion_pass": inc_pass,
+                        "exclusion_triggered": True,
+                        "score": 0.0,
+                        "reasons": ["Rejected: exclusion criteria triggered"],
+                    }
                     continue  # Discard immediately, do not score
                 
                 # Non-leaky scoring system - NO direct eligibility access
                 score = 0.0
+                reasons = []
                 
                 # ONLY use allowed signals: inclusion_pass and exclusion_triggered
-                if info.get("inclusion_pass", False):
+                if inc_pass:
                     score += 2.0  # Strong weight for inclusion pass
+                    reasons.append("Inclusion criteria passed (+2.0)")
+                else:
+                    reasons.append("Inclusion criteria failed")
                 
                 # Small heuristic boosts (allowed)
                 if hasattr(obs.patient, 'biomarkers') and hasattr(obs.patient.biomarkers, 'PD_L1'):
                     if obs.patient.biomarkers.PD_L1 > 50:
                         score += 0.3  # Small biomarker boost
+                        reasons.append("PD-L1 > 50 bonus (+0.3)")
                 
                 if hasattr(obs.patient, 'age'):
                     if 18 <= obs.patient.age <= 75:
                         score += 0.2  # Small age sanity bonus
+                        reasons.append("Age in range 18-75 (+0.2)")
                 
                 trial_scores[trial_id] = score
+                self.trial_analysis[trial_id] = {
+                    "inclusion_pass": inc_pass,
+                    "exclusion_triggered": False,
+                    "score": score,
+                    "reasons": reasons,
+                }
         
         return trial_scores
     

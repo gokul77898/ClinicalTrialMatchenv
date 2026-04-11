@@ -11,6 +11,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import time
 import gradio as gr
 from src.environment import ClinicalTrialEnv
 from src.agents.clinical_trial_agent import ClinicalTrialAgent
@@ -80,6 +81,51 @@ def _fmt_trials_obs(obs) -> str:
     return "\n".join(lines).strip()
 
 
+def _fmt_decision_analysis(result: dict, obs) -> str:
+    """Build decision analysis from agent trial_analysis data."""
+    analysis = result.get("trial_analysis", {})
+    selected = result.get("selected_trial")
+    all_trial_ids = [t["trial_id"] for t in obs.available_trials]
+
+    lines = []
+
+    # Selected trial
+    if selected and selected in analysis:
+        a = analysis[selected]
+        lines.append(f"✅ SELECTED: {selected}  (score {a['score']:.1f})")
+        for r in a["reasons"]:
+            lines.append(f"   • {r}")
+    elif selected:
+        lines.append(f"✅ SELECTED: {selected}  (fallback — no scored trials)")
+    lines.append("")
+
+    # Rejected / not checked
+    lines.append("REJECTED / NOT CHECKED:")
+    for tid in all_trial_ids:
+        if tid == selected:
+            continue
+        if tid in analysis:
+            a = analysis[tid]
+            if a["exclusion_triggered"]:
+                lines.append(f"   ✖ {tid}: Rejected — exclusion triggered")
+            elif not a["inclusion_pass"]:
+                lines.append(f"   ✖ {tid}: Rejected — inclusion failed")
+            else:
+                lines.append(f"   ○ {tid}: Eligible but lower score ({a['score']:.1f})")
+            for r in a["reasons"]:
+                lines.append(f"      {r}")
+        else:
+            # Trial was not checked (wrong cancer type or step limit)
+            trial_data = next((t for t in obs.available_trials if t["trial_id"] == tid), {})
+            cancer = trial_data.get("cancer_type", "?")
+            if cancer != obs.patient.cancer_type:
+                lines.append(f"   ⊘ {tid}: Skipped — cancer type mismatch ({cancer})")
+            else:
+                lines.append(f"   ⊘ {tid}: Not checked (step budget)")
+
+    return "\n".join(lines)
+
+
 def run_synthetic(task_choice: str) -> tuple:
     """Run agent on a synthetic env task."""
     task_id = task_choice.split(" — ")[0].strip()
@@ -90,6 +136,7 @@ def run_synthetic(task_choice: str) -> tuple:
     patient_str = _fmt_patient_obs(obs)
     trials_str = _fmt_trials_obs(obs)
 
+    time.sleep(0.3)  # small delay for UI realism
     result = agent.run_episode(env, task_id=task_id)
 
     steps_lines = []
@@ -105,7 +152,9 @@ def run_synthetic(task_choice: str) -> tuple:
         f"Result:          {status}"
     )
 
-    return patient_str, trials_str, steps_str, result_str
+    decision_str = _fmt_decision_analysis(result, obs)
+
+    return patient_str, trials_str, steps_str, result_str, decision_str
 
 
 # -----------------------------------------------
@@ -119,6 +168,8 @@ def run_realistic(case_choice: str) -> tuple:
     if case is None:
         msg = f"Case {case_id} not found"
         return msg, msg, msg, msg
+
+    time.sleep(0.3)  # small delay for UI realism
 
     result = evaluate_case(case)
 
@@ -187,11 +238,15 @@ with gr.Blocks(title="ClinicalTrialMatchEnv") as demo:
                 with gr.Column():
                     syn_steps = gr.Textbox(label="Agent Steps", lines=16, interactive=False)
                     syn_result = gr.Textbox(label="Final Result", lines=6, interactive=False)
+                    syn_decision = gr.Textbox(
+                        label="Decision Analysis — Why Selected / Why Rejected",
+                        lines=12, interactive=False,
+                    )
 
             syn_btn.click(
                 fn=run_synthetic,
                 inputs=[syn_dropdown],
-                outputs=[syn_patient, syn_trials, syn_steps, syn_result],
+                outputs=[syn_patient, syn_trials, syn_steps, syn_result, syn_decision],
             )
 
         # --- Tab 2: Realistic ---
