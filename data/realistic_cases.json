@@ -1,0 +1,573 @@
+[
+  {
+    "case_id": "RC-01",
+    "label": "Stage IV breast — excluded by most trials",
+    "correct_trial": "REAL-BREAST-003",
+    "patient": {
+      "age": 67,
+      "gender": "female",
+      "cancer_type": "breast cancer",
+      "stage": "IV",
+      "biomarkers": {"EGFR": false, "ALK": true, "PD_L1": 55.0},
+      "lab_values": {"hb": 10.5, "wbc": 6300, "creatinine": 0.9},
+      "comorbidities": ["hypertension"]
+    },
+    "trials": [
+      {
+        "trial_id": "REAL-BREAST-001",
+        "cancer_type": "breast cancer",
+        "inclusion": [
+          {"field": "age", "op": ">=", "value": 18},
+          {"field": "cancer_type", "op": "==", "value": "breast cancer"},
+          {"field": "lab_values.hb", "op": ">=", "value": 10.0}
+        ],
+        "exclusion": [
+          {"field": "stage", "op": "==", "value": "IV"}
+        ],
+        "meta": {"quality": 0.92, "deadline_days": 30, "capacity_ratio": 0.6}
+      },
+      {
+        "trial_id": "REAL-BREAST-002",
+        "cancer_type": "breast cancer",
+        "inclusion": [
+          {"field": "age", "op": ">=", "value": 18},
+          {"field": "cancer_type", "op": "==", "value": "breast cancer"},
+          {"field": "biomarkers.PD_L1", "op": ">=", "value": 80.0}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.85, "deadline_days": 45, "capacity_ratio": 0.4}
+      },
+      {
+        "trial_id": "REAL-BREAST-003",
+        "cancer_type": "breast cancer",
+        "inclusion": [
+          {"field": "age", "op": ">=", "value": 60},
+          {"field": "cancer_type", "op": "==", "value": "breast cancer"},
+          {"field": "biomarkers.PD_L1", "op": ">=", "value": 50.0}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.78, "deadline_days": 60, "capacity_ratio": 0.3}
+      },
+      {
+        "trial_id": "REAL-LUNG-001",
+        "cancer_type": "lung cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "lung cancer"}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.70, "deadline_days": 90, "capacity_ratio": 0.8}
+      }
+    ]
+  },
+  {
+    "case_id": "RC-02",
+    "label": "Young NSCLC with high PD-L1",
+    "correct_trial": "REAL-LUNG-102",
+    "patient": {
+      "age": 34,
+      "gender": "male",
+      "cancer_type": "lung cancer",
+      "stage": "IIIA",
+      "biomarkers": {"EGFR": true, "ALK": false, "PD_L1": 82.0},
+      "lab_values": {"hb": 14.2, "wbc": 7100, "creatinine": 0.8},
+      "comorbidities": []
+    },
+    "trials": [
+      {
+        "trial_id": "REAL-LUNG-101",
+        "cancer_type": "lung cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "lung cancer"},
+          {"field": "age", "op": ">=", "value": 50}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.88, "deadline_days": 21, "capacity_ratio": 0.5}
+      },
+      {
+        "trial_id": "REAL-LUNG-102",
+        "cancer_type": "lung cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "lung cancer"},
+          {"field": "biomarkers.PD_L1", "op": ">=", "value": 50.0}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.95, "deadline_days": 14, "capacity_ratio": 0.2}
+      },
+      {
+        "trial_id": "REAL-LUNG-103",
+        "cancer_type": "lung cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "lung cancer"},
+          {"field": "lab_values.creatinine", "op": "<=", "value": 0.7}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.80, "deadline_days": 60, "capacity_ratio": 0.7}
+      }
+    ]
+  },
+  {
+    "case_id": "RC-03",
+    "label": "Elderly colon — creatinine exclusion trap",
+    "correct_trial": "REAL-COLON-202",
+    "patient": {
+      "age": 72,
+      "gender": "male",
+      "cancer_type": "colon cancer",
+      "stage": "III",
+      "biomarkers": {"EGFR": false, "ALK": false, "PD_L1": 12.0},
+      "lab_values": {"hb": 11.8, "wbc": 5200, "creatinine": 1.8},
+      "comorbidities": ["diabetes", "chronic kidney disease"]
+    },
+    "trials": [
+      {
+        "trial_id": "REAL-COLON-201",
+        "cancer_type": "colon cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "colon cancer"},
+          {"field": "age", "op": ">=", "value": 18}
+        ],
+        "exclusion": [
+          {"field": "lab_values.creatinine", "op": ">", "value": 1.5}
+        ],
+        "meta": {"quality": 0.93, "deadline_days": 25, "capacity_ratio": 0.3}
+      },
+      {
+        "trial_id": "REAL-COLON-202",
+        "cancer_type": "colon cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "colon cancer"},
+          {"field": "age", "op": ">=", "value": 65}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.75, "deadline_days": 50, "capacity_ratio": 0.5}
+      },
+      {
+        "trial_id": "REAL-COLON-203",
+        "cancer_type": "colon cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "colon cancer"},
+          {"field": "lab_values.hb", "op": ">=", "value": 12.0}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.80, "deadline_days": 40, "capacity_ratio": 0.4}
+      }
+    ]
+  },
+  {
+    "case_id": "RC-04",
+    "label": "Pancreatic — no eligible trial (all fail)",
+    "correct_trial": null,
+    "patient": {
+      "age": 58,
+      "gender": "female",
+      "cancer_type": "pancreatic cancer",
+      "stage": "IV",
+      "biomarkers": {"EGFR": false, "ALK": false, "PD_L1": 3.0},
+      "lab_values": {"hb": 8.5, "wbc": 12000, "creatinine": 2.1},
+      "comorbidities": ["liver cirrhosis", "diabetes"]
+    },
+    "trials": [
+      {
+        "trial_id": "REAL-PANC-301",
+        "cancer_type": "pancreatic cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "pancreatic cancer"},
+          {"field": "lab_values.hb", "op": ">=", "value": 10.0}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.90, "deadline_days": 20, "capacity_ratio": 0.2}
+      },
+      {
+        "trial_id": "REAL-PANC-302",
+        "cancer_type": "pancreatic cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "pancreatic cancer"},
+          {"field": "lab_values.creatinine", "op": "<=", "value": 1.5}
+        ],
+        "exclusion": [
+          {"field": "stage", "op": "==", "value": "IV"}
+        ],
+        "meta": {"quality": 0.85, "deadline_days": 35, "capacity_ratio": 0.6}
+      },
+      {
+        "trial_id": "REAL-LUNG-301",
+        "cancer_type": "lung cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "lung cancer"}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.70, "deadline_days": 90, "capacity_ratio": 0.9}
+      }
+    ]
+  },
+  {
+    "case_id": "RC-05",
+    "label": "Breast stage II — multiple eligible, tiebreak needed",
+    "correct_trial": "REAL-BREAST-502",
+    "patient": {
+      "age": 45,
+      "gender": "female",
+      "cancer_type": "breast cancer",
+      "stage": "II",
+      "biomarkers": {"EGFR": false, "ALK": false, "PD_L1": 65.0},
+      "lab_values": {"hb": 13.0, "wbc": 5800, "creatinine": 0.7},
+      "comorbidities": []
+    },
+    "trials": [
+      {
+        "trial_id": "REAL-BREAST-501",
+        "cancer_type": "breast cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "breast cancer"},
+          {"field": "age", "op": ">=", "value": 18}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.70, "deadline_days": 90, "capacity_ratio": 0.8}
+      },
+      {
+        "trial_id": "REAL-BREAST-502",
+        "cancer_type": "breast cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "breast cancer"},
+          {"field": "biomarkers.PD_L1", "op": ">=", "value": 50.0}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.96, "deadline_days": 10, "capacity_ratio": 0.15}
+      },
+      {
+        "trial_id": "REAL-BREAST-503",
+        "cancer_type": "breast cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "breast cancer"},
+          {"field": "lab_values.hb", "op": ">=", "value": 12.0}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.82, "deadline_days": 30, "capacity_ratio": 0.5}
+      }
+    ]
+  },
+  {
+    "case_id": "RC-06",
+    "label": "Lung with severe comorbidity exclusion",
+    "correct_trial": "REAL-LUNG-603",
+    "patient": {
+      "age": 61,
+      "gender": "male",
+      "cancer_type": "lung cancer",
+      "stage": "IIIB",
+      "biomarkers": {"EGFR": true, "ALK": false, "PD_L1": 40.0},
+      "lab_values": {"hb": 12.5, "wbc": 6800, "creatinine": 1.1},
+      "comorbidities": ["congestive heart failure"]
+    },
+    "trials": [
+      {
+        "trial_id": "REAL-LUNG-601",
+        "cancer_type": "lung cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "lung cancer"},
+          {"field": "biomarkers.PD_L1", "op": ">=", "value": 50.0}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.94, "deadline_days": 15, "capacity_ratio": 0.1}
+      },
+      {
+        "trial_id": "REAL-LUNG-602",
+        "cancer_type": "lung cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "lung cancer"},
+          {"field": "age", "op": ">=", "value": 18}
+        ],
+        "exclusion": [
+          {"field": "comorbidities", "op": "contains", "value": "congestive heart failure"}
+        ],
+        "meta": {"quality": 0.88, "deadline_days": 28, "capacity_ratio": 0.4}
+      },
+      {
+        "trial_id": "REAL-LUNG-603",
+        "cancer_type": "lung cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "lung cancer"},
+          {"field": "age", "op": ">=", "value": 55}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.72, "deadline_days": 60, "capacity_ratio": 0.6}
+      }
+    ]
+  },
+  {
+    "case_id": "RC-07",
+    "label": "Colon — borderline HB threshold",
+    "correct_trial": "REAL-COLON-702",
+    "patient": {
+      "age": 55,
+      "gender": "female",
+      "cancer_type": "colon cancer",
+      "stage": "II",
+      "biomarkers": {"EGFR": false, "ALK": false, "PD_L1": 8.0},
+      "lab_values": {"hb": 9.8, "wbc": 4900, "creatinine": 1.0},
+      "comorbidities": ["anemia"]
+    },
+    "trials": [
+      {
+        "trial_id": "REAL-COLON-701",
+        "cancer_type": "colon cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "colon cancer"},
+          {"field": "lab_values.hb", "op": ">=", "value": 10.0}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.91, "deadline_days": 20, "capacity_ratio": 0.3}
+      },
+      {
+        "trial_id": "REAL-COLON-702",
+        "cancer_type": "colon cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "colon cancer"},
+          {"field": "lab_values.hb", "op": ">=", "value": 9.0}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.80, "deadline_days": 45, "capacity_ratio": 0.5}
+      },
+      {
+        "trial_id": "REAL-BREAST-701",
+        "cancer_type": "breast cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "breast cancer"}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.75, "deadline_days": 60, "capacity_ratio": 0.7}
+      }
+    ]
+  },
+  {
+    "case_id": "RC-08",
+    "label": "Melanoma — rare type, limited options",
+    "correct_trial": "REAL-MEL-801",
+    "patient": {
+      "age": 49,
+      "gender": "male",
+      "cancer_type": "melanoma",
+      "stage": "III",
+      "biomarkers": {"EGFR": false, "ALK": false, "PD_L1": 72.0},
+      "lab_values": {"hb": 15.0, "wbc": 6000, "creatinine": 0.9},
+      "comorbidities": []
+    },
+    "trials": [
+      {
+        "trial_id": "REAL-MEL-801",
+        "cancer_type": "melanoma",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "melanoma"},
+          {"field": "biomarkers.PD_L1", "op": ">=", "value": 1.0}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.97, "deadline_days": 10, "capacity_ratio": 0.1}
+      },
+      {
+        "trial_id": "REAL-LUNG-801",
+        "cancer_type": "lung cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "lung cancer"}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.85, "deadline_days": 30, "capacity_ratio": 0.5}
+      },
+      {
+        "trial_id": "REAL-MEL-802",
+        "cancer_type": "melanoma",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "melanoma"},
+          {"field": "age", "op": ">=", "value": 60}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.82, "deadline_days": 40, "capacity_ratio": 0.4}
+      }
+    ]
+  },
+  {
+    "case_id": "RC-09",
+    "label": "Prostate — age + creatinine double exclusion",
+    "correct_trial": "REAL-PROS-903",
+    "patient": {
+      "age": 78,
+      "gender": "male",
+      "cancer_type": "prostate cancer",
+      "stage": "II",
+      "biomarkers": {"EGFR": false, "ALK": false, "PD_L1": 5.0},
+      "lab_values": {"hb": 12.0, "wbc": 5500, "creatinine": 2.3},
+      "comorbidities": ["hypertension", "chronic kidney disease"]
+    },
+    "trials": [
+      {
+        "trial_id": "REAL-PROS-901",
+        "cancer_type": "prostate cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "prostate cancer"},
+          {"field": "age", "op": "<=", "value": 75}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.90, "deadline_days": 20, "capacity_ratio": 0.25}
+      },
+      {
+        "trial_id": "REAL-PROS-902",
+        "cancer_type": "prostate cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "prostate cancer"},
+          {"field": "lab_values.creatinine", "op": "<=", "value": 2.0}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.88, "deadline_days": 30, "capacity_ratio": 0.35}
+      },
+      {
+        "trial_id": "REAL-PROS-903",
+        "cancer_type": "prostate cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "prostate cancer"},
+          {"field": "age", "op": ">=", "value": 18}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.65, "deadline_days": 90, "capacity_ratio": 0.8}
+      }
+    ]
+  },
+  {
+    "case_id": "RC-10",
+    "label": "Breast EGFR+ — biomarker-driven selection",
+    "correct_trial": "REAL-BREAST-1002",
+    "patient": {
+      "age": 52,
+      "gender": "female",
+      "cancer_type": "breast cancer",
+      "stage": "III",
+      "biomarkers": {"EGFR": true, "ALK": false, "PD_L1": 30.0},
+      "lab_values": {"hb": 11.5, "wbc": 7200, "creatinine": 1.0},
+      "comorbidities": ["asthma"]
+    },
+    "trials": [
+      {
+        "trial_id": "REAL-BREAST-1001",
+        "cancer_type": "breast cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "breast cancer"},
+          {"field": "biomarkers.PD_L1", "op": ">=", "value": 50.0}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.92, "deadline_days": 15, "capacity_ratio": 0.2}
+      },
+      {
+        "trial_id": "REAL-BREAST-1002",
+        "cancer_type": "breast cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "breast cancer"},
+          {"field": "biomarkers.EGFR", "op": "==", "value": true}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.89, "deadline_days": 25, "capacity_ratio": 0.3}
+      },
+      {
+        "trial_id": "REAL-BREAST-1003",
+        "cancer_type": "breast cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "breast cancer"},
+          {"field": "lab_values.hb", "op": ">=", "value": 12.0}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.78, "deadline_days": 50, "capacity_ratio": 0.6}
+      }
+    ]
+  },
+  {
+    "case_id": "RC-11",
+    "label": "Lung stage IV — only compassionate-use eligible",
+    "correct_trial": "REAL-LUNG-1103",
+    "patient": {
+      "age": 70,
+      "gender": "female",
+      "cancer_type": "lung cancer",
+      "stage": "IV",
+      "biomarkers": {"EGFR": false, "ALK": false, "PD_L1": 15.0},
+      "lab_values": {"hb": 9.0, "wbc": 11000, "creatinine": 1.6},
+      "comorbidities": ["COPD", "diabetes"]
+    },
+    "trials": [
+      {
+        "trial_id": "REAL-LUNG-1101",
+        "cancer_type": "lung cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "lung cancer"},
+          {"field": "lab_values.hb", "op": ">=", "value": 10.0}
+        ],
+        "exclusion": [
+          {"field": "stage", "op": "==", "value": "IV"}
+        ],
+        "meta": {"quality": 0.93, "deadline_days": 18, "capacity_ratio": 0.2}
+      },
+      {
+        "trial_id": "REAL-LUNG-1102",
+        "cancer_type": "lung cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "lung cancer"},
+          {"field": "lab_values.creatinine", "op": "<=", "value": 1.5}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.87, "deadline_days": 30, "capacity_ratio": 0.4}
+      },
+      {
+        "trial_id": "REAL-LUNG-1103",
+        "cancer_type": "lung cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "lung cancer"},
+          {"field": "age", "op": ">=", "value": 18}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.55, "deadline_days": 120, "capacity_ratio": 0.9}
+      }
+    ]
+  },
+  {
+    "case_id": "RC-12",
+    "label": "Young healthy breast — all trials eligible",
+    "correct_trial": "REAL-BREAST-1201",
+    "patient": {
+      "age": 38,
+      "gender": "female",
+      "cancer_type": "breast cancer",
+      "stage": "I",
+      "biomarkers": {"EGFR": true, "ALK": true, "PD_L1": 90.0},
+      "lab_values": {"hb": 14.5, "wbc": 6000, "creatinine": 0.6},
+      "comorbidities": []
+    },
+    "trials": [
+      {
+        "trial_id": "REAL-BREAST-1201",
+        "cancer_type": "breast cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "breast cancer"},
+          {"field": "biomarkers.PD_L1", "op": ">=", "value": 80.0}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.98, "deadline_days": 7, "capacity_ratio": 0.05}
+      },
+      {
+        "trial_id": "REAL-BREAST-1202",
+        "cancer_type": "breast cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "breast cancer"},
+          {"field": "age", "op": ">=", "value": 18}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.80, "deadline_days": 45, "capacity_ratio": 0.5}
+      },
+      {
+        "trial_id": "REAL-BREAST-1203",
+        "cancer_type": "breast cancer",
+        "inclusion": [
+          {"field": "cancer_type", "op": "==", "value": "breast cancer"},
+          {"field": "lab_values.hb", "op": ">=", "value": 10.0}
+        ],
+        "exclusion": [],
+        "meta": {"quality": 0.75, "deadline_days": 60, "capacity_ratio": 0.7}
+      }
+    ]
+  }
+]
