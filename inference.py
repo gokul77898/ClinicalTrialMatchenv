@@ -29,6 +29,7 @@ load_dotenv()
 
 API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4.1-mini")
+ENV_NAME = "clinical_trial"
 HF_TOKEN = os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY", "")
 
 ENV_BASE_URL = os.environ.get("ENV_BASE_URL", "http://localhost:7860")
@@ -101,12 +102,21 @@ def env_step(action: dict) -> dict:
 # STRICT LOGGING (OpenEnv format only)
 # -----------------------------------------------
 
-def _log_start(task: str, env: str, model: str):
-    print(f"[START] task={task} env={env} model={model}", flush=True)
+def _fmt_action(action: dict) -> str:
+    """Format action dict as compliant string: check_criteria("TRIAL-123")."""
+    atype = action.get("type", "unknown")
+    tid = action.get("trial_id")
+    if atype in ("check_criteria", "select_trial") and tid:
+        return f'{atype}("{tid}")'
+    return f"{atype}()"
 
-def _log_step(step: int, action: str, reward: float, done: bool, error: str = "null"):
+
+def _log_start(task: str):
+    print(f"[START] task={task} env={ENV_NAME} model={MODEL_NAME}", flush=True)
+
+def _log_step(step: int, action_str: str, reward: float, done: bool, error: str = "null"):
     done_str = "true" if done else "false"
-    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_str} error={error}", flush=True)
+    print(f"[STEP] step={step} action={action_str} reward={reward:.2f} done={done_str} error={error}", flush=True)
 
 def _log_end(success: bool, steps: int, rewards: list):
     success_str = "true" if success else "false"
@@ -262,15 +272,15 @@ def run_task(client: OpenAI | None, task_id: str) -> dict:
         observation = env_reset(task_id)
     except Exception as e:
         # Reset failed — still emit valid [START] [STEP] [END]
-        _log_start(task=task_id, env="ClinicalTrialMatchEnv", model=MODEL_NAME)
-        _log_step(step=1, action='{"type":"resolve"}', reward=0.0,
+        _log_start(task=task_id)
+        _log_step(step=1, action_str='resolve()', reward=0.0,
                   done=True, error=f"reset_failed:{str(e)[:40]}")
         _log_end(success=False, steps=1, rewards=[0.0])
         return {"task_id": task_id, "grade": 0.0, "correct": False,
                 "steps": 1, "done": True}
 
     # --- [START] after successful reset ---
-    _log_start(task=task_id, env="ClinicalTrialMatchEnv", model=MODEL_NAME)
+    _log_start(task=task_id)
 
     # --- Main loop ---
     while not done and steps < MAX_STEPS:
@@ -279,7 +289,6 @@ def run_task(client: OpenAI | None, task_id: str) -> dict:
 
         steps += 1
         action = get_action(client, observation, step_history, steps)
-        action_str = json.dumps(action)
 
         try:
             result = env_step(action)
@@ -289,8 +298,8 @@ def run_task(client: OpenAI | None, task_id: str) -> dict:
             info = result["info"]
 
             rewards_list.append(reward_val)
-            _log_step(step=steps, action=action_str, reward=reward_val,
-                      done=done, error="null")
+            _log_step(step=steps, action_str=_fmt_action(action),
+                      reward=reward_val, done=done, error="null")
 
             step_history.append({
                 "action": action,
@@ -307,16 +316,16 @@ def run_task(client: OpenAI | None, task_id: str) -> dict:
         except requests.exceptions.HTTPError as e:
             error_msg = f"HTTP_{e.response.status_code}"
             rewards_list.append(0.0)
-            _log_step(step=steps, action=action_str, reward=0.0,
-                      done=False, error=error_msg)
+            _log_step(step=steps, action_str=_fmt_action(action),
+                      reward=0.0, done=False, error=error_msg)
             if e.response.status_code == 400:
                 break
 
         except Exception as e:
             error_msg = str(e).replace(" ", "_")[:50]
             rewards_list.append(0.0)
-            _log_step(step=steps, action=action_str, reward=0.0,
-                      done=False, error=error_msg)
+            _log_step(step=steps, action_str=_fmt_action(action),
+                      reward=0.0, done=False, error=error_msg)
 
     # --- Force finish if not done ---
     if not done:
@@ -328,7 +337,7 @@ def run_task(client: OpenAI | None, task_id: str) -> dict:
                 steps += 1
                 rewards_list.append(r["reward"]["value"])
                 _log_step(step=steps,
-                          action=json.dumps({"type": "select_trial", "trial_id": best}),
+                          action_str=f'select_trial("{best}")',
                           reward=r["reward"]["value"], done=r["done"], error="null")
 
             result = env_step({"type": "resolve"})
@@ -337,7 +346,7 @@ def run_task(client: OpenAI | None, task_id: str) -> dict:
             grade = result["info"].get("grade", 0.0)
             final_info = result["info"]
             done = True
-            _log_step(step=steps, action='{"type":"resolve"}',
+            _log_step(step=steps, action_str='resolve()',
                       reward=result["reward"]["value"], done=True, error="null")
         except Exception:
             grade = 0.0
@@ -346,7 +355,7 @@ def run_task(client: OpenAI | None, task_id: str) -> dict:
     if steps == 0:
         steps = 1
         rewards_list = [0.0]
-        _log_step(step=1, action='{"type":"resolve"}', reward=0.0,
+        _log_step(step=1, action_str='resolve()', reward=0.0,
                   done=True, error="no_steps_executed")
 
     correct = final_info.get("correct", False)
@@ -370,9 +379,9 @@ def main():
         _ensure_server()
     except Exception as e:
         # Can't reach server — emit minimal valid output
-        _log_start(task=TASKS[0], env="ClinicalTrialMatchEnv", model=MODEL_NAME)
-        _log_step(step=1, action='{"type":"resolve"}', reward=0.0,
-                  done=True, error=f"server_unavailable")
+        _log_start(task=TASKS[0])
+        _log_step(step=1, action_str='resolve()', reward=0.0,
+                  done=True, error="server_unavailable")
         _log_end(success=False, steps=1, rewards=[0.0])
         sys.exit(1)
 
