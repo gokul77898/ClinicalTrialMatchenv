@@ -1,30 +1,25 @@
 """
-ClinicalTrialMatchEnv - Baseline Inference Script
+ClinicalTrialMatchEnv - OpenEnv-Compliant Inference Script
 
-Runs an LLM agent against all 3 clinical trial matching tasks.
+Runs a hybrid LLM+heuristic agent on a single clinical trial matching task.
+LLM is used for initial reasoning (steps 1-2), then a fast deterministic
+heuristic takes over to guarantee completion within budget.
 
 Usage:
     export API_BASE_URL="https://api.openai.com/v1"
-    export MODEL_NAME="gpt-4o-mini"
+    export MODEL_NAME="gpt-4.1-mini"
     export HF_TOKEN="your-api-key-here"
     python inference.py
-
-Environment Variables:
-    API_BASE_URL: Base URL for OpenAI-compatible API
-    MODEL_NAME:   Model identifier to use
-    HF_TOKEN:     API key for authentication
 """
 
 import os
 import sys
 import json
 import time
-import subprocess
 import requests
 from openai import OpenAI
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
 
 # -----------------------------------------------
@@ -32,422 +27,178 @@ load_dotenv()
 # -----------------------------------------------
 
 API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
-MODEL_NAME = os.environ.get("MODEL_NAME", "meta-llama/Meta-Llama-3-70B-Instruct:novita")
+MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4.1-mini")
 HF_TOKEN = os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY", "")
 
-ENV_BASE_URL = "http://localhost:7860"
-MAX_STEPS_PER_TASK = 18
-TASKS = [
-    "single_match",
-    "hidden_exclusion",
-    "ambiguous_match"
-]
-
-# -----------------------------------------------
-# SERVER MANAGEMENT
-# -----------------------------------------------
-
-def start_server():
-    """Start the FastAPI environment server."""
-    print("Starting environment server...")
-    env = os.environ.copy()
-    env["PYTHONPATH"] = os.path.dirname(os.path.abspath(__file__))
-
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn",
-         "api.server:app",
-         "--host", "0.0.0.0",
-         "--port", "7860",
-         "--log-level", "error"],
-        env=env,
-        cwd=os.path.dirname(os.path.abspath(__file__))
-    )
-
-    # Wait for server to be ready (max 30 seconds)
-    for i in range(30):
-        try:
-            r = requests.get(f"{ENV_BASE_URL}/health", timeout=2)
-            if r.status_code == 200:
-                print(f"Server ready after {i+1} seconds")
-                return proc
-        except Exception:
-            pass
-        time.sleep(1)
-
-    proc.terminate()
-    raise RuntimeError("Server failed to start within 30 seconds")
-
-def stop_server(proc):
-    """Stop the FastAPI environment server."""
-    if proc:
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-    print("Server stopped")
+ENV_BASE_URL = os.environ.get("ENV_BASE_URL", "http://localhost:7860")
+MAX_STEPS = 18
+TASKS = ["single_match", "hidden_exclusion", "ambiguous_match"]
 
 # -----------------------------------------------
 # ENVIRONMENT INTERACTION
 # -----------------------------------------------
 
 def env_reset(task_id: str) -> dict:
-    """Reset environment for a specific task."""
-    r = requests.post(
-        f"{ENV_BASE_URL}/reset",
-        json={"task_id": task_id},
-        timeout=10
-    )
+    r = requests.post(f"{ENV_BASE_URL}/reset", json={"task_id": task_id}, timeout=10)
     r.raise_for_status()
     return r.json()
 
 def env_step(action: dict) -> dict:
-    """Take a step in the environment."""
-    r = requests.post(
-        f"{ENV_BASE_URL}/step",
-        json=action,
-        timeout=10
-    )
+    r = requests.post(f"{ENV_BASE_URL}/step", json=action, timeout=10)
     r.raise_for_status()
     return r.json()
 
-def env_get_tasks() -> list:
-    """Get list of available tasks."""
-    r = requests.get(f"{ENV_BASE_URL}/tasks", timeout=10)
-    r.raise_for_status()
-    return r.json()["tasks"]
-
 # -----------------------------------------------
-# LLM AGENT
+# STRICT LOGGING (OpenEnv format only)
 # -----------------------------------------------
 
-SYSTEM_PROMPT = """You are a clinical trial matching agent.
+def _log_start(task: str, env: str, model: str):
+    print(f"[START] task={task} env={env} model={model}", flush=True)
 
-Your job: Match a cancer patient to the correct clinical trial.
+def _log_step(step: int, action: str, reward: float, done: bool, error: str = "null"):
+    done_str = "true" if done else "false"
+    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_str} error={error}", flush=True)
 
-RULES:
-- You must respond with ONLY a JSON object
-- No explanation, no markdown, no extra text
-- Just the raw JSON action
+def _log_end(success: bool, steps: int, rewards: list):
+    success_str = "true" if success else "false"
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(f"[END] success={success_str} steps={steps} rewards={rewards_str}", flush=True)
 
-AVAILABLE ACTIONS:
+# -----------------------------------------------
+# LLM CALL (used only for first 1-2 steps)
+# -----------------------------------------------
 
-Check a trial's eligibility criteria:
+SYSTEM_PROMPT = """You are a clinical trial matching agent. Respond with ONLY a JSON object.
+
+ACTIONS:
 {"type": "check_criteria", "trial_id": "TRIAL-XXX-1234"}
-
-Select the trial you think matches:
 {"type": "select_trial", "trial_id": "TRIAL-XXX-1234"}
-
-Flag a contradiction in the patient chart:
-{"type": "flag_contradiction", "reason": "lab values inconsistent with stage"}
-
-Investigate a conflicting field value:
-{"type": "investigate_conflict", "field": "stage"}
-
-Switch to a different patient case (multi-patient mode):
-{"type": "switch_case", "case_id": "case_2"}
-
-End the episode (REQUIRED to finish):
 {"type": "resolve"}
 
-When you call check_criteria, you receive different
-levels of detail based on task difficulty:
+STRATEGY: Check each trial's criteria. Select the one that passes inclusion
+and does NOT trigger exclusion. Then resolve. JSON only, no explanation."""
 
-EASY tasks: Full details including which rules passed/failed
-and a plain-English summary. Use this to select directly.
-
-MEDIUM tasks: Boolean flags only + a hint. You must
-investigate patient fields to understand WHY a check failed.
-
-HARD/EXPERT tasks: Boolean flags only. No hints.
-You must reason from scratch using patient field values.
-
-Always investigate patient fields BEFORE deciding on hard tasks.
-
-Patient data includes:
-- biomarkers.EGFR_expression / ALK_expression (0.0-1.0 confidence)
-- lab_value_trends: direction (increasing/decreasing/stable) and rate
-- comorbidities with severity levels (mild/moderate/severe)
-- prior_treatments list
-
-Trial metadata:
-- max_patients / enrolled_patients / has_capacity: full trials are ineligible
-- days_until_deadline / is_urgent: urgent trials (<=14 days) need priority
-- trial_score: quality score (0.0-1.0) for comparing eligible trials
-- has_biomarker_requirements: if true, trial requires specific biomarkers
-- has_expression_thresholds: if true, you MUST investigate biomarkers.EGFR_expression
-  and biomarkers.ALK_expression before selecting that trial. The threshold may be
-  borderline — patient value could be just above or just below the minimum required.
-- has_interaction_rules: if true, be careful — this trial may exclude patients based on
-  COMBINATIONS of fields (e.g. age > 65 AND creatinine > 1.4). Investigate multiple
-  fields before deciding.
-
-Additional actions:
-- switch_case: switch active patient in multi-patient mode (requires case_id)
-- flag_contradiction: flag contradictory patient data (requires reason string)
-- investigate_conflict: resolve conflicting field values (requires field name)
-
-IMPORTANT — DATA QUALITY ISSUES:
-- Some patient lab values may be 'unknown' (lab test not performed).
-  If a trial requires a lab value that is unknown, the patient CANNOT
-  be matched to that trial safely. Always investigate lab values first.
-- Some patients have conflicting field values (e.g. stage reported as III
-  but notes say II). If you see 'conflicting report' when investigating,
-  use investigate_conflict action to get the full details.
-- Patient data_freshness_days shows how old the data is. Stale data
-  (>90 days) may not reflect current patient state.
-
-STRATEGY:
-1. First investigate key patient fields (cancer_type, stage, biomarkers, lab_values)
-2. Check criteria for each trial
-3. If a trial fails, investigate WHY by checking patient fields
-4. If you see 'unknown' or 'conflicting report', handle it before deciding
-5. Select the trial where ALL checks pass
-6. Call resolve to finish
-
-DO NOT guess. Investigate before deciding.
-
-CRITICAL: You MUST call resolve within 20 steps or you score 0.
-CRITICAL: Respond with JSON only. No other text."""
-
-def build_user_message(observation: dict, step_history: list) -> str:
-    """Build the user message for the LLM."""
+def call_llm(client: OpenAI, observation: dict) -> dict | None:
+    """Single LLM call with tight timeout. Returns parsed action or None."""
     patient = observation["patient"]
     trials = observation["available_trials"]
-    steps_left = observation["max_steps"] - observation["steps_taken"]
     checked = observation["checked_trials"]
-    selected = observation["selected_trial_id"]
 
-    # Build trial list
     trial_lines = []
     for t in trials:
-        status = "CHECKED" if t["trial_id"] in checked else "NOT CHECKED"
-        cap = f"cap={t.get('enrolled_patients',0)}/{t.get('max_patients',10)}" if 'max_patients' in t else ""
-        deadline = f"deadline={t.get('days_until_deadline','?')}d" if 'days_until_deadline' in t else ""
-        score = f"score={t.get('trial_score','?')}" if 'trial_score' in t else ""
-        extras = " | ".join(x for x in [cap, deadline, score] if x)
-        trial_lines.append(
-            f"  {t['trial_id']} | {t['cancer_type']} | {status} | {extras}"
+        status = "CHECKED" if t["trial_id"] in checked else "UNCHECKED"
+        trial_lines.append(f"  {t['trial_id']} | {t['cancer_type']} | {status}")
+
+    msg = (
+        f"PATIENT: {patient['age']}yo {patient['gender']}, "
+        f"{patient['cancer_type']}, stage {patient['stage']}\n"
+        f"TRIALS:\n" + "\n".join(trial_lines) + "\n\n"
+        f"Pick ONE JSON action:"
+    )
+
+    try:
+        resp = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": msg}
+            ],
+            temperature=0.0,
+            max_tokens=60,
+            timeout=8.0
         )
-    trials_str = "\n".join(trial_lines)
+        raw = resp.choices[0].message.content.strip()
+        # Extract JSON
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start >= 0 and end > start:
+            action = json.loads(raw[start:end])
+            if "type" in action:
+                return action
+    except Exception:
+        pass
+    return None
 
-    # Build recent history (last 5 only)
-    recent = step_history[-5:] if len(step_history) > 5 else step_history
-    history_lines = []
-    for h in recent:
-        action = h["action"]
-        reward = h["reward"]
-        result = h.get("result_info", "")
-        summary = h.get("eligibility_summary", "")
-        line = f"  {action} -> reward={reward:.2f} {result}"
-        if summary:
-            line += f" | {summary}"
-        history_lines.append(line)
-    history_str = "\n".join(history_lines) if history_lines else "  (none)"
+# -----------------------------------------------
+# HEURISTIC FALLBACK AGENT
+# -----------------------------------------------
 
-    # Urgency message based on steps left
-    if steps_left <= 3:
-        urgency = f"URGENT: Only {steps_left} steps left! You MUST select_trial then resolve NOW!"
-    elif steps_left <= 6:
-        urgency = f"WARNING: Only {steps_left} steps left. Wrap up soon."
-    else:
-        urgency = f"Steps remaining: {steps_left}"
-
-    msg = f"""PATIENT: {patient['age']}yo {patient['gender']}, {patient['cancer_type']}, stage {patient['stage']}
-Biomarkers: EGFR={patient['biomarkers']['EGFR']}, ALK={patient['biomarkers']['ALK']}, PD_L1={patient['biomarkers']['PD_L1']}
-Labs: HB={patient['lab_values']['hb'] if patient['lab_values']['hb'] is not None else 'unknown'}, WBC={patient['lab_values']['wbc'] if patient['lab_values']['wbc'] is not None else 'unknown'}, Creatinine={patient['lab_values']['creatinine'] if patient['lab_values']['creatinine'] is not None else 'unknown'}
-Comorbidities: {patient.get('comorbidities', [])}
-
-TRIALS:
-{trials_str}
-
-SELECTED: {selected if selected else 'NONE - you must select then resolve'}
-{urgency}
-
-RECENT ACTIONS:
-{history_str}
-
-Respond with ONE JSON action only:"""
-
-    return msg
-
-def get_llm_action(
-    client: OpenAI,
-    observation: dict,
-    step_history: list,
-    task_max_steps: int = 18,
-    retry: int = 3
-) -> dict:
-    """Get next action from LLM with smart fallback."""
-
-    steps_taken = observation["steps_taken"]
-    max_steps = observation["max_steps"]
-    steps_left = max_steps - steps_taken
-    selected = observation["selected_trial_id"]
-    checked = observation["checked_trials"]
+def heuristic_action(observation: dict, step_history: list) -> dict:
+    """Deterministic fallback: check unchecked trials, pick best, resolve."""
     trials = [t["trial_id"] for t in observation["available_trials"]]
+    checked = observation["checked_trials"]
+    selected = observation["selected_trial_id"]
 
-    # HARD RULE 1: If only 2 steps left, force select+resolve
+    # If trial already selected -> resolve
+    if selected is not None:
+        return {"type": "resolve"}
+
+    # Check unchecked trials one by one
+    unchecked = [t for t in trials if t not in checked]
+    if unchecked:
+        return {"type": "check_criteria", "trial_id": unchecked[0]}
+
+    # All checked — pick the best candidate from history
+    best_trial = _pick_best_from_history(trials, step_history)
+    return {"type": "select_trial", "trial_id": best_trial}
+
+
+def _pick_best_from_history(trials: list, step_history: list) -> str:
+    """Pick trial with inclusion_pass and no exclusion from check history."""
+    for h in step_history:
+        action = h.get("action", {})
+        info = h.get("info", {})
+        if action.get("type") == "check_criteria":
+            tid = action.get("trial_id")
+            if info.get("inclusion_pass") and not info.get("exclusion_triggered"):
+                return tid
+    # Fallback: first trial
+    return trials[0] if trials else "unknown"
+
+# -----------------------------------------------
+# HYBRID AGENT: LLM (steps 1-2) + HEURISTIC
+# -----------------------------------------------
+
+def get_action(client: OpenAI | None, observation: dict,
+               step_history: list, steps_taken: int) -> dict:
+    """Pick action: LLM for first 2 steps, heuristic after."""
+    trials = [t["trial_id"] for t in observation["available_trials"]]
+    selected = observation["selected_trial_id"]
+    steps_left = observation["max_steps"] - observation["steps_taken"]
+
+    # SAFETY: force select+resolve when nearly out of steps
     if steps_left <= 2:
         if selected is None:
-            # Pick most promising trial
-            unchecked = [t for t in trials if t not in checked]
-            target = unchecked[0] if unchecked else trials[0]
-            print(f"  [FORCED] Selecting trial (steps critical): {target}")
-            return {"type": "select_trial", "trial_id": target}
-        else:
-            print(f"  [FORCED] Resolving (steps critical)")
-            return {"type": "resolve"}
+            best = _pick_best_from_history(trials, step_history)
+            return {"type": "select_trial", "trial_id": best}
+        return {"type": "resolve"}
 
-    # HARD RULE 2: If selected and last 2 actions were not resolve, force resolve
-    if selected is not None:
-        recent_types = [h["action"].get("type") for h in step_history[-2:]]
-        if "resolve" not in recent_types and steps_left <= 4:
-            print(f"  [FORCED] Resolving (trial selected, low steps)")
-            return {"type": "resolve"}
+    # SAFETY: if selected and running low, resolve
+    if selected is not None and steps_left <= 4:
+        return {"type": "resolve"}
 
-    # HARD RULE 3: If all trials checked and none selected, pick the best one
-    all_checked = all(t in checked for t in trials)
-    if all_checked and selected is None:
-        print(f"  [FORCED] All trials checked, selecting first: {trials[0]}")
-        return {"type": "select_trial", "trial_id": trials[0]}
-
-    user_msg = build_user_message(observation, step_history)
-
-    for attempt in range(retry):
-        try:
-            response = client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_msg}
-                ],
-                temperature=0.0,
-                max_tokens=80,
-                timeout=30.0  # 30 second timeout per LLM call
-            )
-
-            raw = response.choices[0].message.content.strip()
-            print(f"  [LLM raw]: {raw[:150]}")
-
-            # Aggressive JSON extraction
-            raw_clean = raw
-
-            # Remove markdown
-            if "```" in raw_clean:
-                parts = raw_clean.split("```")
-                for part in parts:
-                    part = part.strip()
-                    if part.startswith("json"):
-                        part = part[4:].strip()
-                    if part.startswith("{"):
-                        raw_clean = part
-                        break
-
-            # Find JSON object in response
-            start = raw_clean.find("{")
-            end = raw_clean.rfind("}") + 1
-            if start >= 0 and end > start:
-                raw_clean = raw_clean[start:end]
-
-            action = json.loads(raw_clean)
-
-            # Validate action has required type
-            if "type" not in action:
-                raise ValueError("Action missing 'type' field")
-
-            valid_types = {
-                "investigate", "check_criteria",
-                "select_trial", "resolve",
-                "flag_contradiction", "switch_case",
-                "investigate_conflict"
-            }
-            if action["type"] not in valid_types:
-                raise ValueError(
-                    f"Invalid action type: {action['type']}"
-                )
-
-            # Validate required fields
-            if action["type"] == "investigate" and "field" not in action:
-                action["field"] = "age"
-            if action["type"] == "flag_contradiction" and "reason" not in action:
-                action["reason"] = "chart inconsistency detected"
-            if action["type"] == "investigate_conflict" and "field" not in action:
-                action["field"] = "stage"
-            if action["type"] == "switch_case" and "case_id" not in action:
-                action["case_id"] = "case_1"
-            if action["type"] in ("check_criteria", "select_trial"):
-                if "trial_id" not in action:
-                    unchecked = [t for t in trials if t not in checked]
-                    action["trial_id"] = (
-                        unchecked[0] if unchecked else trials[0]
-                    )
-
+    # LLM for first 2 steps only (if client available)
+    if steps_taken <= 2 and client is not None:
+        action = call_llm(client, observation)
+        if action is not None:
+            # Validate trial_id references exist
+            if action.get("type") in ("check_criteria", "select_trial"):
+                if action.get("trial_id") not in trials:
+                    action["trial_id"] = trials[0]
             return action
 
-        except (json.JSONDecodeError, ValueError, KeyError) as e:
-            print(f"  [Attempt {attempt+1}] Parse error: {e}")
-            if attempt == retry - 1:
-                # Smart fallback based on state
-                if selected is not None:
-                    print("  [Fallback] Resolving (trial already selected)")
-                    return {"type": "resolve"}
-                unchecked = [t for t in trials if t not in checked]
-                if unchecked:
-                    print(f"  [Fallback] Checking unchecked trial: {unchecked[0]}")
-                    return {
-                        "type": "check_criteria",
-                        "trial_id": unchecked[0]
-                    }
-                print(f"  [Fallback] Selecting: {trials[0]}")
-                return {"type": "select_trial", "trial_id": trials[0]}
-
-        except Exception as e:
-            print(f"  [Attempt {attempt+1}] API error: {e}")
-            if attempt == retry - 1:
-                if selected is not None:
-                    return {"type": "resolve"}
-                return {
-                    "type": "check_criteria",
-                    "trial_id": trials[0]
-                }
-            time.sleep(2)
-
-    return {"type": "resolve"}
+    # Heuristic for all remaining steps
+    return heuristic_action(observation, step_history)
 
 # -----------------------------------------------
 # RUN ONE TASK
 # -----------------------------------------------
 
-def get_max_steps(task_id: str) -> int:
-    """Get maximum steps allowed for a task."""
-    if task_id == "multi_patient":
-        return 25  # needs more steps for 3 patients
-    return 18
+def run_task(client: OpenAI | None, task_id: str) -> dict:
+    """Run hybrid agent on one task with strict output."""
+    start_time = time.time()
 
-def _log_start(task: str, env: str, model: str):
-    """Emit [START] log in hackathon format."""
-    print(f"[START] task={task} env={env} model={model}", flush=True)
-
-
-def _log_step(step: int, action: str, reward: float, done: bool, error: str = "null"):
-    """Emit [STEP] log in hackathon format."""
-    done_str = "true" if done else "false"
-    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_str} error={error}", flush=True)
-
-
-def _log_end(success: bool, steps: int, score: float, rewards: list):
-    """Emit [END] log in hackathon format."""
-    success_str = "true" if success else "false"
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={success_str} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
-
-
-def run_task(client: OpenAI, task_id: str) -> dict:
-    """Run LLM agent on one task."""
     observation = env_reset(task_id)
-    task_max_steps = get_max_steps(task_id)
-
     _log_start(task=task_id, env="ClinicalTrialMatchEnv", model=MODEL_NAME)
 
     step_history = []
@@ -457,33 +208,31 @@ def run_task(client: OpenAI, task_id: str) -> dict:
     steps = 0
     final_info = {}
 
-    while not done and steps < task_max_steps:
-        steps += 1
+    while not done and steps < MAX_STEPS:
+        # Time safety: if > 4s elapsed, force finish
+        if time.time() - start_time > 4.0:
+            break
 
-        action = get_llm_action(client, observation, step_history, task_max_steps)
+        steps += 1
+        action = get_action(client, observation, step_history, steps)
         action_str = json.dumps(action)
 
         try:
             result = env_step(action)
-
             observation = result["observation"]
             reward_val = result["reward"]["value"]
             done = result["done"]
             info = result["info"]
-            reason = result["reward"].get("reason", "")
 
             rewards_list.append(reward_val)
-            _log_step(step=steps, action=action_str, reward=reward_val, done=done, error="null")
-
-            # Capture eligibility summary if available
-            eligibility_summary = info.get("summary", "")
+            _log_step(step=steps, action=action_str, reward=reward_val,
+                      done=done, error="null")
 
             step_history.append({
                 "action": action,
                 "reward": reward_val,
                 "done": done,
-                "result_info": reason,
-                "eligibility_summary": eligibility_summary
+                "info": info,
             })
 
             if done:
@@ -494,49 +243,50 @@ def run_task(client: OpenAI, task_id: str) -> dict:
         except requests.exceptions.HTTPError as e:
             error_msg = f"HTTP_{e.response.status_code}"
             rewards_list.append(0.0)
-            _log_step(step=steps, action=action_str, reward=0.0, done=False, error=error_msg)
+            _log_step(step=steps, action=action_str, reward=0.0,
+                      done=False, error=error_msg)
             if e.response.status_code == 400:
                 break
-            time.sleep(1)
+
         except Exception as e:
             error_msg = str(e).replace(" ", "_")[:50]
             rewards_list.append(0.0)
-            _log_step(step=steps, action=action_str, reward=0.0, done=False, error=error_msg)
-            time.sleep(1)
+            _log_step(step=steps, action=action_str, reward=0.0,
+                      done=False, error=error_msg)
 
-    # If not done after loop, force resolve
+    # Force finish if not done
     if not done:
         try:
-            # First select a trial if none selected
             if observation["selected_trial_id"] is None:
-                trials = [
-                    t["trial_id"]
-                    for t in observation["available_trials"]
-                ]
-                checked = observation["checked_trials"]
-                target = checked[0] if checked else trials[0]
-                env_step({
-                    "type": "select_trial",
-                    "trial_id": target
-                })
+                trials = [t["trial_id"] for t in observation["available_trials"]]
+                best = _pick_best_from_history(trials, step_history)
+                r = env_step({"type": "select_trial", "trial_id": best})
+                steps += 1
+                rewards_list.append(r["reward"]["value"])
+                _log_step(step=steps,
+                          action=json.dumps({"type": "select_trial", "trial_id": best}),
+                          reward=r["reward"]["value"], done=r["done"], error="null")
 
             result = env_step({"type": "resolve"})
+            steps += 1
+            rewards_list.append(result["reward"]["value"])
             grade = result["info"].get("grade", 0.0)
             final_info = result["info"]
             done = True
-        except Exception as e:
+            _log_step(step=steps, action='{"type":"resolve"}',
+                      reward=result["reward"]["value"], done=True, error="null")
+        except Exception:
             grade = 0.0
 
     correct = final_info.get("correct", False)
-
-    _log_end(success=correct, steps=steps, score=grade, rewards=rewards_list)
+    _log_end(success=correct, steps=steps, rewards=rewards_list)
 
     return {
         "task_id": task_id,
         "grade": grade,
         "correct": correct,
         "steps": steps,
-        "done": done
+        "done": done,
     }
 
 # -----------------------------------------------
@@ -544,68 +294,24 @@ def run_task(client: OpenAI, task_id: str) -> dict:
 # -----------------------------------------------
 
 def main():
-    # Validate environment variables
-    if not HF_TOKEN:
-        print("ERROR: HF_TOKEN environment variable not set")
-        print("Usage: export HF_TOKEN=your-api-key")
+    # Initialize LLM client (optional — works without it via heuristic)
+    client = None
+    if HF_TOKEN:
+        try:
+            client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+        except Exception:
+            pass
+
+    # Run single task (first task only for compliance)
+    task_id = TASKS[0]
+    try:
+        result = run_task(client, task_id)
+    except Exception:
+        _log_end(success=False, steps=0, rewards=[])
         sys.exit(1)
 
-    # Initialize OpenAI client
-    client = OpenAI(
-        base_url=API_BASE_URL,
-        api_key=HF_TOKEN
-    )
+    sys.exit(0 if result.get("done", False) else 1)
 
-    # Start environment server
-    server_proc = None
-    try:
-        server_proc = start_server()
-    except RuntimeError as e:
-        print(f"ERROR: {e}")
-        sys.exit(1)
-
-    # Run all tasks
-    results = []
-    try:
-        for task_id in TASKS:
-            try:
-                result = run_task(client, task_id)
-                results.append(result)
-            except Exception as e:
-                _log_end(success=False, steps=0, score=0.0, rewards=[])
-                results.append({
-                    "task_id": task_id,
-                    "grade": 0.0,
-                    "correct": False,
-                    "steps": 0,
-                    "done": False,
-                    "error": str(e)
-                })
-    finally:
-        stop_server(server_proc)
-
-    # Compute summary
-    total_grade = 0.0
-    for r in results:
-        total_grade += r.get("grade", 0.0)
-    avg_grade = total_grade / len(results) if results else 0.0
-
-    # Save results to file
-    results_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "baseline_results.json"
-    )
-    with open(results_path, "w") as f:
-        json.dump({
-            "model": MODEL_NAME,
-            "api_base_url": API_BASE_URL,
-            "results": results,
-            "average_grade": avg_grade
-        }, f, indent=2)
-
-    # Exit 0 if all tasks completed
-    all_done = all(r.get("done", False) for r in results)
-    sys.exit(0 if all_done else 1)
 
 if __name__ == "__main__":
     main()
