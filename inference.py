@@ -365,6 +365,12 @@ def run_task(client: OpenAI | None, task_id: str) -> dict:
         _log_step(step=1, action_str='resolve()', reward=0.01,
                   done=True, error="no_steps_executed")
 
+    # --- Safety: ensure last reward is always the clamped grade ---
+    if rewards_list:
+        rewards_list[-1] = _clamp(grade)
+    else:
+        rewards_list = [_clamp(grade)]
+
     correct = final_info.get("correct", False)
     _log_end(success=correct, steps=steps, rewards=rewards_list)
 
