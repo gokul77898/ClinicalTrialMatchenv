@@ -8,13 +8,13 @@ All graders are deterministic - same input always produces same output.
 from dataclasses import dataclass
 from typing import Optional
 
-from src.config import CLAMP_SCORES_FOR_HACKATHON
-
-def _clamp(raw: float) -> float:
-    """Clamp a raw score to the required range."""
-    if CLAMP_SCORES_FOR_HACKATHON:
-        return round(max(0.01, min(0.99, raw)), 4)
-    return round(max(0.0, min(1.0, raw)), 4)
+def _clamp(score: float) -> float:
+    """Clamp score to strict (0, 1) — never exactly 0.0 or 1.0."""
+    if score <= 0.0:
+        return 0.01
+    if score >= 1.0:
+        return 0.99
+    return round(float(score), 4)
 
 
 @dataclass
