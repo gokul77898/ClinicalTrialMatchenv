@@ -127,10 +127,10 @@ class TestTaskIntegration:
         
         print("✅ PASSED")
     
-    def test_grade_is_none_when_no_task_id(self):
-        """Test 6: grade is None when no task_id."""
+    def test_grade_is_valid_when_no_task_id(self):
+        """Test 6: grade is a valid (0,1) value even when no task_id."""
         print("\n" + "="*80)
-        print("TEST 6: grade is None when no task_id")
+        print("TEST 6: grade is valid (0,1) when no task_id")
         print("="*80)
         
         env = ClinicalTrialEnv()
@@ -142,7 +142,8 @@ class TestTaskIntegration:
         
         print(f"\nGrade: {info.get('grade')}")
         
-        assert info["grade"] is None, f"Expected grade=None, got {info['grade']}"
+        assert info["grade"] is not None, "Grade should never be None"
+        assert 0.0 < info["grade"] < 1.0, f"Grade must be in (0,1), got {info['grade']}"
         
         print("✅ PASSED")
     
@@ -265,7 +266,7 @@ def run_all_tests():
         ("resolve returns grade for task episode", test_suite.test_resolve_returns_grade_for_task_episode),
         ("correct selection gives high grade on easy", test_suite.test_correct_selection_gives_high_grade_on_easy),
         ("wrong selection gives low grade on easy", test_suite.test_wrong_selection_gives_low_grade_on_easy),
-        ("grade is None when no task_id", test_suite.test_grade_is_none_when_no_task_id),
+        ("grade is valid (0,1) when no task_id", test_suite.test_grade_is_valid_when_no_task_id),
         ("action history tracked correctly", test_suite.test_action_history_tracked_correctly),
         ("all 3 tasks run without error", test_suite.test_all_3_tasks_run_without_error),
         ("episode fully reproducible", test_suite.test_episode_fully_reproducible),

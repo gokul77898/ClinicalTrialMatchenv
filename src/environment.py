@@ -562,7 +562,7 @@ class ClinicalTrialEnv:
             return self._action_resolve_multi()
         
         if self._selected_trial_id is None:
-            return -1.0, "Resolved without selecting a trial", True, {"correct": False}
+            return -1.0, "Resolved without selecting a trial", True, {"correct": False, "grade": _clamp(0.0)}
         
         # Find selected trial
         selected_trial = next(t for t in self._trials if t.trial_id == self._selected_trial_id)
@@ -612,7 +612,7 @@ class ClinicalTrialEnv:
             info["task_id"] = self._current_task.task_id
             info["correct_trial_id"] = self._current_task.correct_trial_id
         else:
-            info["grade"] = None
+            info["grade"] = _clamp(0.5) if info.get("correct") else _clamp(0.0)
         
         return reward, reason, True, info
     
@@ -626,7 +626,7 @@ class ClinicalTrialEnv:
         unresolved = [c for c in self._cases if c["selected_trial_id"] is None]
         if unresolved:
             ids = [c["case_id"] for c in unresolved]
-            return -0.1, f"Not all cases resolved yet (missing: {ids})", True, {"correct": False}
+            return -0.1, f"Not all cases resolved yet (missing: {ids})", True, {"correct": False, "grade": _clamp(0.0)}
         
         # Grade each case
         task = self._current_task
