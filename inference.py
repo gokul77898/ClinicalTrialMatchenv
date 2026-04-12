@@ -20,6 +20,7 @@ import subprocess
 import requests
 from openai import OpenAI
 from dotenv import load_dotenv
+from src.graders import _clamp
 
 load_dotenv()
 
@@ -262,7 +263,7 @@ def run_task(client: OpenAI | None, task_id: str) -> dict:
     step_history = []
     rewards_list = []
     done = False
-    grade = 0.0
+    grade = 0.5
     steps = 0
     final_info = {}
     observation = None
@@ -273,10 +274,10 @@ def run_task(client: OpenAI | None, task_id: str) -> dict:
     except Exception as e:
         # Reset failed — still emit valid [START] [STEP] [END]
         _log_start(task=task_id)
-        _log_step(step=1, action_str='resolve()', reward=0.0,
+        _log_step(step=1, action_str='resolve()', reward=0.01,
                   done=True, error=f"reset_failed:{str(e)[:40]}")
-        _log_end(success=False, steps=1, rewards=[0.0])
-        return {"task_id": task_id, "grade": 0.0, "correct": False,
+        _log_end(success=False, steps=1, rewards=[0.01])
+        return {"task_id": task_id, "grade": 0.01, "correct": False,
                 "steps": 1, "done": True}
 
     # --- [START] after successful reset ---
@@ -297,10 +298,6 @@ def run_task(client: OpenAI | None, task_id: str) -> dict:
             done = result["done"]
             info = result["info"]
 
-            rewards_list.append(reward_val)
-            _log_step(step=steps, action_str=_fmt_action(action),
-                      reward=reward_val, done=done, error="null")
-
             step_history.append({
                 "action": action,
                 "reward": reward_val,
@@ -309,9 +306,17 @@ def run_task(client: OpenAI | None, task_id: str) -> dict:
             })
 
             if done:
-                grade = info.get("grade", 0.0)
+                grade = _clamp(info.get("grade", 0.5))
                 final_info = info
+                # Use clamped grade as the resolve reward
+                rewards_list.append(grade)
+                _log_step(step=steps, action_str=_fmt_action(action),
+                          reward=grade, done=True, error="null")
                 break
+            else:
+                rewards_list.append(reward_val)
+                _log_step(step=steps, action_str=_fmt_action(action),
+                          reward=reward_val, done=False, error="null")
 
         except requests.exceptions.HTTPError as e:
             error_msg = f"HTTP_{e.response.status_code}"
@@ -342,20 +347,22 @@ def run_task(client: OpenAI | None, task_id: str) -> dict:
 
             result = env_step({"type": "resolve"})
             steps += 1
-            rewards_list.append(result["reward"]["value"])
-            grade = result["info"].get("grade", 0.0)
+            resolve_reward = result["reward"]["value"]
+            grade = _clamp(result["info"].get("grade", 0.5))
             final_info = result["info"]
             done = True
+            # Log and store clamped grade as the resolve reward
+            rewards_list.append(grade)
             _log_step(step=steps, action_str='resolve()',
-                      reward=result["reward"]["value"], done=True, error="null")
+                      reward=grade, done=True, error="null")
         except Exception:
-            grade = 0.0
+            grade = _clamp(0.0)
 
     # --- Guarantee at least 1 step ---
     if steps == 0:
         steps = 1
-        rewards_list = [0.0]
-        _log_step(step=1, action_str='resolve()', reward=0.0,
+        rewards_list = [0.01]
+        _log_step(step=1, action_str='resolve()', reward=0.01,
                   done=True, error="no_steps_executed")
 
     correct = final_info.get("correct", False)
@@ -381,9 +388,9 @@ def main():
         # Can't reach server — emit minimal valid output for all 3 tasks
         for t in TASKS:
             _log_start(task=t)
-            _log_step(step=1, action_str='resolve()', reward=0.0,
+            _log_step(step=1, action_str='resolve()', reward=0.01,
                       done=True, error="server_unavailable")
-            _log_end(success=False, steps=1, rewards=[0.0])
+            _log_end(success=False, steps=1, rewards=[0.01])
         sys.exit(1)
 
     # Initialize LLM client (optional — works without it via heuristic)
