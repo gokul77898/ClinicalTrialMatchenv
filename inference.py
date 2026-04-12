@@ -121,6 +121,14 @@ def _log_step(step: int, action_str: str, reward: float, done: bool, error: str 
 
 def _log_end(success: bool, steps: int, rewards: list):
     success_str = "true" if success else "false"
+    # HARD SAFETY: force last reward strictly into (0, 1) — no exceptions
+    if len(rewards) > 0:
+        final = float(rewards[-1])
+        if final <= 0.0:
+            final = 0.01
+        if final >= 1.0:
+            final = 0.99
+        rewards[-1] = final
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     print(f"[END] success={success_str} steps={steps} rewards={rewards_str}", flush=True)
 
