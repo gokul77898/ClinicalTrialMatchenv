@@ -605,7 +605,9 @@ class ClinicalTrialEnv:
                 done=True,
                 correct_trial_id=self._current_task.correct_trial_id
             )
-            grade = grade_task(self._current_task.task_id, episode)
+            raw_grade = grade_task(self._current_task.task_id, episode)
+            grade = _clamp(raw_grade)
+            assert 0.0 < grade < 1.0, f"INVALID SCORE: {grade}"
             info["grade"] = grade
             info["task_id"] = self._current_task.task_id
             info["correct_trial_id"] = self._current_task.correct_trial_id
@@ -650,6 +652,7 @@ class ClinicalTrialEnv:
         case_score = total_correct * 0.3
         efficiency = 0.1 if self._steps_taken <= 12 else (0.05 if self._steps_taken <= 16 else 0.0)
         grade = _clamp(case_score + efficiency)
+        assert 0.0 < grade < 1.0, f"INVALID SCORE: {grade}"
         
         reward = (1.0 if total_correct == len(self._cases) else 0.0) + (0.2 if self._steps_taken <= 12 else 0.0)
         reason = f"Multi-patient resolve: {total_correct}/{len(self._cases)} correct"
